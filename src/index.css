@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+  
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Document Laser Scanner Animations */
+@keyframes laserScan {
+  0% {
+    top: 4%;
+    opacity: 0.8;
+  }
+  50% {
+    top: 92%;
+    opacity: 1;
+  }
+  100% {
+    top: 4%;
+    opacity: 0.8;
+  }
+}
+
+@keyframes laserShimmer {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scaleX(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1.02);
+  }
+}
+
+@keyframes bubbleFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-laser-scan {
+  animation: laserScan 2.4s ease-in-out infinite;
+}
+
+.animate-laser-shimmer {
+  animation: laserShimmer 1.5s ease-in-out infinite;
+}
+
+.animate-bubble-float {
+  animation: bubbleFloat 2s ease-in-out infinite;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e0b0e;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #571622;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8c1529;
+}
