@@ -14,6 +14,7 @@ import {
   QuestionStat,
 } from './types';
 import { getCV } from './utils/cvLoader';
+import { gradeStudent, resolveStudentResponse } from './utils/grading';
 import {
   processStudentScan,
   calculateQuestionStats,
@@ -199,32 +200,11 @@ export function App() {
     const targetStudent = updatedResults[studentIdx];
 
     if (targetStudent) {
-      const q = targetStudent.questions.find((item) => item.number === qNum);
-      if (q) {
-        q.response = resolvedChoice;
-        targetStudent.responses[qNum] = resolvedChoice;
-
-        const correct = key[qNum];
-        if (resolvedChoice !== 'Blank' && resolvedChoice.length === 1) {
-          const choiceIdx = resolvedChoice.charCodeAt(0) - 65;
-          if (q.boxes[choiceIdx]) {
-            q.boxes[choiceIdx].colour = correct === resolvedChoice ? 'green' : 'red';
-            q.boxes[choiceIdx].bool = true;
-            q.response_box = q.boxes[choiceIdx];
-          }
-        }
-
-        // Recalculate student score
-        let newScore = 0;
-        for (const question of targetStudent.questions) {
-          if (key[question.number] && key[question.number] === question.response) {
-            newScore++;
-          }
-        }
-        targetStudent.score = newScore;
-        targetStudent.percentage = Math.round(
-          (newScore / Math.max(1, targetStudent.total)) * 100
-        );
+      try {
+        updatedResults[studentIdx] = resolveStudentResponse(targetStudent, qNum, resolvedChoice, key);
+      } catch (error) {
+        setPageErrors(previous => [...previous, error instanceof Error ? error.message : 'Could not apply correction.']);
+        return;
       }
     }
 
@@ -244,20 +224,22 @@ export function App() {
             student.annotatedDataUrl = await renderStudentFinalAnnotation(
               cv,
               student,
-              params
+              { ...params, key }
             );
           }
         }
       } catch (annoErr) {
         console.error('Error rendering final annotations:', annoErr);
       }
-      finishMarking(updatedResults, params);
+      finishMarking(updatedResults, { ...params, key });
     }
   };
 
   const finishMarking = (results: StudentResult[], calibParams: CalibrationParams) => {
-    const key = getParsedKey();
-    const stats = calculateQuestionStats(results, key, calibParams.choices || 4);
+    const key = calibParams.key;
+    const gradedResults = results.map(student => gradeStudent(student, key));
+    setStudentResults(gradedResults);
+    const stats = calculateQuestionStats(gradedResults, key, calibParams.choices || 4);
     setExamStats(stats);
     setCurrentStep(4);
   };

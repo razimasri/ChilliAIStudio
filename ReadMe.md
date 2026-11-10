@@ -72,6 +72,21 @@ If two boxes are detected with answers the user can choose the correct questions
 
 
 
+## Score consistency
+
+Scoring is calculated from finalized responses and the answer key, independently
+of annotation drawing. Corrections refresh that score; rendering cannot award
+additional points. Final rendering starts from the clean registered scan and
+leaves the student record unchanged.
+
+Run `npm run test:grading` with `CHROMIUM_PATH` when using a system Chromium.
+The regression uses 27 questions with exactly four correct responses and checks
+4/27 in the scorecard, CSV, printed annotation text, and downloaded PNG. It also
+checks identical pixels on repeated rendering, immutable student state, and
+correct/wrong/blank/unclear correction outcomes. Existing marked images must be
+regenerated after updating; previously downloaded files are not rewritten.
+
+
 ## Web port: page geometry
 
 PDFs are rendered at 600 DPI. Only the first-page calibration template is

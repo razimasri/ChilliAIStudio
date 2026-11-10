@@ -7,6 +7,7 @@ import {
   QuestionStat,
 } from '../types';
 import { getCV } from './cvLoader';
+import { calculateScore } from './grading';
 import { TEMPLATE_HEIGHT, TEMPLATE_WIDTH } from './pageGeometry';
 
 /**
@@ -1292,9 +1293,10 @@ export function annotate(
  *     cv2.putText(image, params.key[question.number], (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, params.font_size, (255, 255, 255), 20, lineType=cv2.LINE_AA)
  *     cv2.putText(image, params.key[question.number], (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, params.font_size, Student.colours.get("green"), 7, lineType=cv2.LINE_AA)
  */
+// Drawing uses a precomputed score; it must never award points.
 export function add_markup(
   cv: any,
-  student: { questions: DetectedQuestion[]; responses: (string | false)[]; score: number; scan: any },
+  student: { questions: DetectedQuestion[]; responses: (string | false)[]; readonly score: number; scan: any },
   image: any,
   params: CalibrationParams
 ): void {
@@ -1311,7 +1313,6 @@ export function add_markup(
       if (question.response_box) {
         question.response_box.colour = 'green';
       }
-      student.score += 1;
     }
 
     const boxIdx = correctAns.charCodeAt(0) - 65;
@@ -1498,6 +1499,7 @@ export async function processStudentScan(
 
   find_responses(cv, studentState, q_area, pageParams);
   studentState.responses = studentState.questions.map((q) => q.response);
+  studentState.score = calculateScore(studentState.responses, pageParams.key);
 
   // Capture clean deskewed scan for ambiguity crops before any annotations are baked
   const cleanCanvas = document.createElement('canvas');
@@ -1508,8 +1510,7 @@ export async function processStudentScan(
 
   let annotatedDataUrl = rawDeskewedDataUrl;
 
-  // Only run add_markup and annotate if there are NO ambiguous marks on this student,
-  // matching ChilliMark.py line 327-370 where correction_update finishes annotation only after resolution.
+  // Draw final annotations after review; scoring is independent of rendering.
   if (!hasAmbiguity) {
     onProgress?.('Annotating scan...');
     if (pageParams.key && Object.keys(pageParams.key).length > 0) {
@@ -1587,17 +1588,8 @@ export async function processStudentScan(
   };
 }
 
-/**
- * Completes annotation for students once all ambiguities have been confirmed and resolved.
- * Exact port of ChilliMark.py correction_update() (lines 359-374):
- * def correction_update(student: Student, gui: Gui, params: Parameters):
- *   q_area = student.scan[params.y1:params.y2, params.x1:params.x2]
- *   for question in student.incomplete:
- *     question.annotate(params, q_area)
- *   if params.key:
- *     student.add_markup(q_area, params)
- *     (draw score)
- *   student.scan[params.y1:params.y2, params.x1:params.x2] = q_area
+/** Render from the clean registered scan using the canonical response score.
+ * Repeated rendering must not change either the grade or the student state.
  */
 export async function renderStudentFinalAnnotation(
   cv: any,
@@ -1623,9 +1615,9 @@ export async function renderStudentFinalAnnotation(
   qRoi.delete();
 
   const studentState = {
-    questions: student.questions,
+    questions: structuredClone(student.questions),
     responses: student.responses,
-    score: student.score,
+    score: calculateScore(student.responses, params.key),
     scan: scanMat,
   };
 
