@@ -111,3 +111,19 @@ PYTHON=.venv/bin/python npm run test:calibration
 are rejected instead of being replaced with fabricated contours. The browser
 limits contour expansion to 128 attempts and reports failure if it cannot
 stabilize; valid selections use the original area-stability rule and threshold.
+
+## Results and exports
+
+Results open on Overall Statistics, with class score summaries, a score
+histogram, and question response distributions. Student scores and annotated
+sheets remain available in their own tabs.
+
+Class Report CSV includes the answer key, every student's score and per-question
+responses, followed by correct/option/blank/unclear counts. Missing responses are
+padded as Blank so rows keep the same question columns. Item Stats CSV includes
+counts and percentages for every option, including options beyond D. The ZIP
+includes both reports alongside the annotated sheets.
+
+Run `npm run test:results` (with `CHROMIUM_PATH` if needed) to check the results
+navigation and actual CSV/ZIP downloads. This test uses Python's standard CSV
+reader to validate quoted, Unicode, comma-containing, and multiline names.

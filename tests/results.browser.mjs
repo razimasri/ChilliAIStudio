@@ -1,0 +1,47 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { chromium } from 'playwright';
+import { createServer } from 'vite';
+import JSZip from 'jszip';
+const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false}});await server.listen();
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
+const parse=data=>{
+  const p=spawnSync(process.env.PYTHON||'python3',['-c','import csv,sys,json,io; print(json.dumps(list(csv.reader(io.StringIO(sys.stdin.read())))))'],{input:data,encoding:'utf8'});
+  assert.equal(p.status,0,p.stderr);return JSON.parse(p.stdout);
+};
+try {
+  const page=await browser.newPage({viewport:{width:1440,height:1100}});
+  await page.goto(server.resolvedUrls.local[0]+'tests/fixtures/results.html');
+  await page.getByRole('heading',{name:'Class Overview & Question Analysis'}).waitFor();
+  await page.getByRole('heading',{name:'Score Distribution'}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Print Sheet',exact:true}).count(),0);
+  assert.equal(await page.getByRole('button',{name:'Download Sheet (PNG)',exact:true}).count(),0);
+  const lowest=page.locator('div.rounded-2xl').filter({has:page.locator('span',{hasText:'Lowest Score'})}).last();
+  assert.match(await lowest.innerText(),/1\s*\/\s*5/);
+  const download=async name=>{const wait=page.waitForEvent('download');await page.getByRole('button',{name,exact:true}).click();return readFile(await (await wait).path());};
+  const reportText=(await download('Class Report CSV')).toString();
+  const report=parse(reportText);
+  assert.deepEqual(report[1],['Answer Key','','A','B','E','A','B']);
+  assert.deepEqual(report[4],['Zoë, "Q"\nX','1','A','Blank','Blank','Blank','Blank']);
+  assert.ok(report.every(row=>row.length===7),'Every report row spans all questions');
+  assert.deepEqual(report.find(row=>row[1]==='Correct'),['','Correct','2','1','1','1','0']);
+  assert.deepEqual(report.find(row=>row[1]==='Unclear'),['','Unclear','0','0','0','0','2']);
+  const items=parse((await download('Item Stats CSV')).toString());
+  const value=(row,col)=>items[row][items[0].indexOf(col)];
+  assert.equal(value(3,'E'),'1');assert.equal(value(5,'Unclear'),'2');assert.equal(value(5,'Answered'),'0');
+  assert.equal(value(5,'Blank'),'1');assert.equal(value(5,'Candidates'),'3');
+  assert.equal(value(5,'Unclear %'),'67');
+  const zip=await JSZip.loadAsync(await download('Download All Student Work (ZIP) 3'));
+  const reportFile=Object.keys(zip.files).find(p=>p.endsWith('Class_Scores_Summary.csv'));
+  assert.equal(await zip.file(reportFile).async('string'),reportText);
+  assert.ok(Object.keys(zip.files).some(p=>p.endsWith('Question_Statistics.csv')));
+  await page.screenshot({path:'/workspace/work/results-overview.png',fullPage:true});
+  await page.getByRole('button',{name:/Annotated Marked Sheets/}).click();
+  await page.getByRole('button',{name:'Print Sheet',exact:true}).waitFor();
+  assert.ok((await page.locator('body').innerText()).includes('Key: A'));
+  await page.getByRole('button',{name:/Overall Statistics/}).click();
+  await page.setViewportSize({width:390,height:844});
+  await page.getByRole('heading',{name:'Score Distribution'}).waitFor();
+  console.log('Results overview, complete report/item CSVs, Unicode/quote/newline names, blank/unclear counts, fifth option, ZIP contents and sheet navigation passed');
+} finally {await browser.close();await server.close();}

@@ -1714,8 +1714,7 @@ export function calculateQuestionStats(
   key: Record<number, string>,
   choicesCount: number = 4
 ): QuestionStat[] {
-  const keyLength = Object.keys(key).length;
-  const numQuestions = keyLength > 0 ? keyLength : (students[0]?.questions.length || 0);
+  const numQuestions = questionCount(students, key);
   const stats: QuestionStat[] = [];
 
   for (let q = 0; q < numQuestions; q++) {
@@ -1724,6 +1723,7 @@ export function calculateQuestionStats(
     for (let c = 0; c < choicesCount; c++) {
       distribution[String.fromCharCode(65 + c)] = 0;
     }
+    if (/^[A-Z]$/.test(correctLetter)) distribution[correctLetter] = 0;
     distribution['Blank'] = 0;
     distribution['Unclear'] = 0;
 
@@ -1732,7 +1732,7 @@ export function calculateQuestionStats(
 
     for (const student of students) {
       const resp = student.responses[q];
-      if (resp === false) {
+      if (resp === false || resp === 'Unclear') {
         distribution['Unclear'] = (distribution['Unclear'] || 0) + 1;
       } else if (resp === 'Blank' || !resp) {
         distribution['Blank'] = (distribution['Blank'] || 0) + 1;
@@ -1765,50 +1765,58 @@ export function calculateQuestionStats(
   return stats;
 }
 
-/**
- * Exports CSV matching ChilliMark.py make_csv (lines 792-828)
- */
+function questionCount(students: StudentResult[], key: Record<number, string>): number {
+  const keyed = Object.keys(key).map(Number);
+  return keyed.length ? Math.max(...keyed) + 1 : Math.max(0, ...students.map(s =>
+    Math.max(s.total, s.responses.length, s.questions.length)));
+}
+
+function csv(rows: string[][]): string {
+  return rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\r\n');
+}
+
+/** Complete class report: key, scores, responses, and per-question counts. */
 export function exportStudentScoresCsv(
   students: StudentResult[],
   key: Record<number, string> = {}
 ): string {
-  const keyLength = Object.keys(key).length || (students[0]?.questions.length || 0);
-  const qNums = Array.from({ length: keyLength }, (_, i) => i + 1);
-
-  const rows: string[][] = [];
-  rows.push(['Student Name', `Out of ${keyLength}`, ...qNums.map(String)]);
-  rows.push(['Answer Key', '', ...Array.from({ length: keyLength }, (_, i) => key[i] || '')]);
-
+  const count = questionCount(students, key);
+  const indices = Array.from({ length: count }, (_, i) => i);
+  const rows: string[][] = [
+    ['Student Name', `Out of ${count}`, ...indices.map(i => String(i + 1))],
+    ['Answer Key', '', ...indices.map(i => key[i] || '')],
+  ];
   for (const student of students) {
-    const resps = student.responses.slice(0, keyLength).map((r) => (r === false ? 'Unclear' : r || 'Blank'));
-    rows.push([student.name, String(student.score), ...resps]);
+    rows.push([student.name, String(student.score), ...indices.map(i => {
+      const response = student.responses[i];
+      return response === false || response === 'Unclear' ? 'Unclear' : response || 'Blank';
+    })]);
   }
-
-  return rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
+  const stats = calculateQuestionStats(students, key);
+  const options = responseOptions(stats);
+  rows.push(Array(count + 2).fill(''));
+  rows.push(['', 'Correct', ...stats.map(q => String(q.correctCount))]);
+  rows.push(['', 'Correct %', ...stats.map(q => String(q.correctPercent))]);
+  for (const option of [...options, 'Blank', 'Unclear']) {
+    rows.push(['', option, ...stats.map(q => String(q.distribution[option] || 0))]);
+  }
+  return csv(rows);
 }
 
-/**
- * Exports question item analysis CSV
- */
+function responseOptions(stats: QuestionStat[]): string[] {
+  return [...new Set(stats.flatMap(q => Object.keys(q.distribution).filter(k => /^[A-Z]$/.test(k))))].sort();
+}
+
+/** Detailed item analysis, including every detected option and response status. */
 export function exportQuestionStatsCsv(stats: QuestionStat[]): string {
-  const rows: string[][] = [];
-  rows.push(['Question', 'Correct Answer', 'Correct Count', 'Correct %', 'A', 'B', 'C', 'D', 'Blank', 'Unclear']);
-
-  for (const s of stats) {
-    rows.push([
-      `Q${s.questionNumber}`,
-      s.correctAnswer,
-      String(s.correctCount),
-      `${s.correctPercent}%`,
-      String(s.distribution['A'] || 0),
-      String(s.distribution['B'] || 0),
-      String(s.distribution['C'] || 0),
-      String(s.distribution['D'] || 0),
-      String(s.distribution['Blank'] || 0),
-      String(s.distribution['Unclear'] || 0),
-    ]);
+  const options = responseOptions(stats);
+  const rows: string[][] = [['Question', 'Correct Answer', 'Correct Count', 'Correct %',
+    'Candidates', 'Answered', ...options, 'Blank', 'Unclear', ...options.map(o => `${o} %`), 'Blank %', 'Unclear %']];
+  for (const q of stats) {
+    rows.push([`Q${q.questionNumber}`, q.correctAnswer, String(q.correctCount), String(q.correctPercent),
+      String(Object.values(q.distribution).reduce((sum, n) => sum + n, 0)), String(q.totalAnswered),
+      ...[...options, 'Blank', 'Unclear'].map(o => String(q.distribution[o] || 0)),
+      ...[...options, 'Blank', 'Unclear'].map(o => String(q.percentages[o] || 0))]);
   }
-
-  return rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
+  return csv(rows);
 }
-
