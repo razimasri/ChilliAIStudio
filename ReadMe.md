@@ -111,3 +111,25 @@ PYTHON=.venv/bin/python npm run test:calibration
 are rejected instead of being replaced with fabricated contours. The browser
 limits contour expansion to 128 attempts and reports failure if it cannot
 stabilize; valid selections use the original area-stability rule and threshold.
+
+The row reconstruction check uses Python's unchanged grid routines as a reference:
+
+```sh
+npm run test:rows
+```
+
+Only Python's standard library is required for this check (`PYTHON` and
+`CHROMIUM_PATH` can select installed executables). The fixtures contain raw box
+centers captured from page 1 of each real sample after the calibration fix, with
+source commit, selection, resolution, and question-region metadata. Seventeen
+cases cover observed row grouping, question/letter ordering, missing edge and
+interior boxes, unequal blocks, drift, duplicate detections, and noise.
+
+The web engine now uses the original global observed rows and median spacing,
+without inventing rows inside gaps or adjusting rows separately per block.
+Column reconstruction consumes each detection at most once and fills missing
+positions in ascending row order. This intentionally fixes Python's list-mutation
+and reverse-tail bugs; tests specify those corrected cases independently instead
+of asserting parity with their incorrect results. The IB and IGCSE fixture
+question coordinates match Python exactly. The choice-count heuristic and
+question assembly remain unchanged.
