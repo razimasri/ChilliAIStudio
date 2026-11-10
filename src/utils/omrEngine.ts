@@ -8,6 +8,7 @@ import {
 } from '../types';
 import { getCV } from './cvLoader';
 import { calculateScore } from './grading';
+import { addWatermark } from './watermark';
 import { TEMPLATE_HEIGHT, TEMPLATE_WIDTH } from './pageGeometry';
 
 /**
@@ -1554,6 +1555,7 @@ export async function processStudentScan(
       cv.LINE_AA
     );
 
+    await addWatermark(cv, scaledScan);
     const markedCanvas = document.createElement('canvas');
     cv.imshow(markedCanvas, scaledScan);
     annotatedDataUrl = markedCanvas.toDataURL('image/png');
@@ -1664,6 +1666,7 @@ export async function renderStudentFinalAnnotation(
     cv.LINE_AA
   );
 
+  await addWatermark(cv, scanMat);
   const canvas = document.createElement('canvas');
   cv.imshow(canvas, scanMat);
   const finalDataUrl = canvas.toDataURL('image/png');

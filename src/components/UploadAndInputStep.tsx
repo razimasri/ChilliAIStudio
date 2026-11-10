@@ -275,8 +275,9 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
       {/* Top Banner */}
       <div className="bg-[#240c10] border border-[#571622] rounded-2xl p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
         <div>
-          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
-            <span>ChilliMark Answer Sheet Scanner</span>
+          <h1 className="text-2xl font-black text-white tracking-tight flex flex-wrap items-center gap-3">
+            <span className="rounded-lg bg-white p-2"><img src="/icons/Banner.png" alt="ChilliMark" className="w-52 sm:w-64 h-auto object-contain" /></span>
+            <span className="sr-only">Answer Sheet Scanner</span>
             <span className="text-xs bg-[#571622] text-[#f3b0ba] font-mono px-2 py-0.5 rounded-full border border-[#8c1529]">
               v1.0 Adjuma
             </span>
