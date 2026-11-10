@@ -23,10 +23,8 @@ try {
     page.on('pageerror', error => console.error(error));
     page.on('console', msg => { if (msg.text().startsWith('geometry:')) console.log(msg.text()); });
     await page.goto(origin);
-    await page.waitForFunction(() => window.cv, null, { timeout: 120000 });
-    await page.evaluate(async () => { window.cv = await window.cv; });
     const report = await page.evaluate(async ({ name }) => {
-      const { loadExamFile } = await import('/src/utils/pdfProcessor.ts');
+      const { loadExamFile, getExamPage, releaseUnusedSources } = await import('/src/utils/pdfProcessor.ts');
       const engine = await import('/src/utils/omrEngine.ts');
       const { getCV } = await import('/src/utils/cvLoader.ts');
       const cv = await getCV();
@@ -35,17 +33,20 @@ try {
       const file = new File([await response.blob()], `${name}.pdf`, { type: 'application/pdf' });
       const loaded = await loadExamFile(file, p => { if (p.stage === 'rendering') console.log(`geometry: ${name}: ${p.message}`); });
       const sizes = loaded.map(p => [p.width, p.height]);
-      const allLossless = loaded.every(p => p.dataUrl.startsWith('data:image/png;'));
+      const allDeferred = loaded.every(p => p.sourceFile === file && p.dataUrl.startsWith('data:image/svg+xml,'));
+      const sourcePages = [...loaded];
       // Keep two pages so we test batch pages independently of the template.
       const pages = loaded.splice(0, 2);
       loaded.length = 0;
-      const native = await engine.renderScanMat(cv, pages[0].dataUrl);
+      const firstRaster = await getExamPage(pages[0]);
+      const native = await engine.renderScanMat(cv, firstRaster.url);
       const nativeSize = [native.cols, native.rows];
       native.delete();
-      const template = await engine.renderToCanonicalMat(cv, pages[0].dataUrl);
+      const template = await engine.renderToCanonicalMat(cv, firstRaster.url);
       const templateSize = [template.cols, template.rows];
       const { rotated, rect } = engine.rotation(cv, template);
       template.delete();
+      firstRaster.release();
 
       // Find a tight empty-box selection and grid bounds on the actual sample.
       const threshold = engine.get_thresh(cv, rotated);
@@ -94,8 +95,10 @@ try {
       console.log(`geometry: ${name}: box ${box.w}×${box.h}, question area [${params.x1}, ${params.y1}, ${params.x2}, ${params.y2}]`);
       const results = [];
       for (let i = 0; i < pages.length; i++) {
-        const result = await engine.processStudentScan(cv, pages[i].dataUrl, `Sample ${i + 1}`, i, params, msg => console.log(`geometry: ${name} page ${i + 1}: ${msg}`));
-        const aligned = await engine.renderScanMat(cv, result.rawDeskewedDataUrl);
+        const raster = await getExamPage(pages[i]);
+        const result = await engine.processStudentScan(cv, raster.url, `Sample ${i + 1}`, i, params, msg => console.log(`geometry: ${name} page ${i + 1}: ${msg}`));
+        raster.release();
+        const aligned = await engine.renderScanMat(cv, result.rawDeskewedDataUrl || result.annotatedDataUrl);
         const alignedSize = [aligned.cols, aligned.rows];
         aligned.delete();
         const cropSizes = [];
@@ -106,14 +109,14 @@ try {
         // Exercise final annotation from the stored aligned raster, then ensure the
         // final renderer retains the exact question coordinate frame.
         const coordsBefore = JSON.stringify(result.questions.map(q => q.boxes.map(b => b.xy)));
-        const corrected = await engine.renderStudentFinalAnnotation(cv, result, params);
+        const corrected = result.rawDeskewedDataUrl ? await engine.renderStudentFinalAnnotation(cv, result, params) : result.annotatedDataUrl;
         const correctedMat = await engine.renderScanMat(cv, corrected);
         const correctedSize = [correctedMat.cols, correctedMat.rows];
         correctedMat.delete();
         results.push({
           alignedSize, correctedSize, questions: result.questions.length,
           coordsUnchanged: coordsBefore === JSON.stringify(result.questions.map(q => q.boxes.map(b => b.xy))),
-          lossless: corrected.startsWith('data:image/png;') && result.rawDeskewedDataUrl.startsWith('data:image/png;'),
+          lossless: (await (await fetch(corrected)).blob()).type === 'image/png',
           cropSizes,
         });
       }
@@ -122,12 +125,14 @@ try {
       let rejectsBlank = false;
       try { engine.largest_cnt(cv, blank).delete(); } catch { rejectsBlank = true; }
       blank.delete();
-      return { sizes, nativeSize, templateSize, allLossless, results, rejectsBlank, rect };
+      releaseUnusedSources(sourcePages, []);
+      const { releaseAllImages } = await import('/src/utils/imageStore.ts'); releaseAllImages();
+      return { sizes, nativeSize, templateSize, allDeferred, results, rejectsBlank, rect };
     }, { name });
     assert.deepEqual(report.sizes, expectedSizes);
     assert.deepEqual(report.nativeSize, expectedSizes[0]);
     assert.deepEqual(report.templateSize, [4800, 6840]);
-    assert.equal(report.allLossless, true);
+    assert.equal(report.allDeferred, true);
     assert.equal(report.rejectsBlank, true);
     for (const result of report.results) {
       assert.deepEqual(result.alignedSize, [4800, 6840]);

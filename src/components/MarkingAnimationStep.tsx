@@ -1,3 +1,4 @@
+import { PagePreview } from './PagePreview';
 import React from 'react';
 import { CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 import { ExamFile } from '../types';
@@ -9,6 +10,7 @@ interface MarkingAnimationStepProps {
   progressPercent: number;
   statusText?: string;
   pageErrors?: string[];
+  onBack?: () => void;
 }
 
 export const MarkingAnimationStep: React.FC<MarkingAnimationStepProps> = ({
@@ -18,9 +20,11 @@ export const MarkingAnimationStep: React.FC<MarkingAnimationStepProps> = ({
   progressPercent,
   statusText,
   pageErrors = [],
+  onBack,
 }) => {
   return (
     <div className="max-w-4xl mx-auto px-4 py-12 text-center space-y-6">
+      {pageErrors.length > 0 && onBack && <button onClick={onBack} className="rounded-lg bg-[#8c1529] px-4 py-2 text-white">Back to upload</button>}
       {/* Animated Chilli Header */}
       <div className="relative inline-flex items-center justify-center">
         <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-[#8c1529] to-[#571622] flex items-center justify-center shadow-2xl shadow-[#8c1529]/40 border-2 border-[#b1a1a4]/30 animate-pulse">
@@ -104,8 +108,8 @@ export const MarkingAnimationStep: React.FC<MarkingAnimationStepProps> = ({
                     : 'border-[#571622]/40 bg-[#18090b] opacity-50'
                 }`}
               >
-                <img
-                  src={file.dataUrl}
+                <PagePreview
+                  file={file}
                   alt={`Page ${idx + 1}`}
                   className="w-full h-full object-cover opacity-75"
                 />

@@ -1,12 +1,14 @@
-import * as pdfjsLib from 'pdfjs-dist';
-import { ExamFile } from '../types';
-import { PDF_POINTS_PER_INCH, SCAN_DPI } from './pageGeometry';
+import * as pdfjsLib from "pdfjs-dist";
+import { ExamFile } from "../types";
+import { canvasBlob, imageUrl, releaseImage } from "./imageStore";
+import { queuePage } from "./pageQueue";
+import { PDF_POINTS_PER_INCH, SCAN_DPI } from "./pageGeometry";
 
 // Set up worker
 try {
   pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url
+    "pdfjs-dist/build/pdf.worker.min.mjs",
+    import.meta.url,
   ).toString();
 } catch {
   // fallback if worker URL resolution fails
@@ -14,7 +16,7 @@ try {
 }
 
 export interface PdfProgressInfo {
-  stage: 'reading' | 'parsing' | 'rendering' | 'completed';
+  stage: "reading" | "parsing" | "rendering" | "completed";
   fileName: string;
   currentPage: number;
   totalPages: number;
@@ -22,192 +24,263 @@ export interface PdfProgressInfo {
   message: string;
 }
 
-/**
- * Load an uploaded file (either PDF or Image) and extract pages as ExamFile array
- */
+const sources = new Map<File, Promise<pdfjsLib.PDFDocumentProxy>>();
+const thumbnails = new Map<string, { file: File; blob: Blob }>();
+let cached:
+  { file: File; page: number; rotation: number; blob: Blob } | undefined;
+
+function documentFor(file: File): Promise<pdfjsLib.PDFDocumentProxy> {
+  let promise = sources.get(file);
+  if (!promise) {
+    promise = file
+      .arrayBuffer()
+      .then((data) => pdfjsLib.getDocument({ data }).promise);
+    sources.set(file, promise);
+    void promise.catch(() => {
+      if (sources.get(file) === promise) sources.delete(file);
+    });
+  }
+  return promise;
+}
+
+const placeholder =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="340"><rect width="240" height="340" fill="#f4f4f4"/><text x="120" y="175" text-anchor="middle" fill="#666" font-size="18">Loading preview…</text></svg>',
+  );
+
+/** Read page metadata only. No page is rasterized during upload. */
 export async function loadExamFile(
   file: File,
-  onProgress?: (info: PdfProgressInfo) => void
+  onProgress?: (info: PdfProgressInfo) => void,
 ): Promise<ExamFile[]> {
-  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-
-  if (isPdf) {
-    onProgress?.({
-      stage: 'reading',
-      fileName: file.name,
-      currentPage: 0,
-      totalPages: 1,
-      percent: 5,
-      message: `Reading document ${file.name}...`,
-    });
-
-    const arrayBuffer = await file.arrayBuffer();
-
-    onProgress?.({
-      stage: 'parsing',
-      fileName: file.name,
-      currentPage: 0,
-      totalPages: 1,
-      percent: 15,
-      message: 'Parsing PDF document structure...',
-    });
-
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-    const pdf = await loadingTask.promise;
-    const pages: ExamFile[] = [];
-    const numPages = pdf.numPages;
-
-    try {
-      for (let i = 1; i <= numPages; i++) {
-        const pageStartPercent = Math.round(15 + ((i - 1) / numPages) * 80);
-        onProgress?.({
-          stage: 'rendering',
-          fileName: file.name,
-          currentPage: i,
-          totalPages: numPages,
-          percent: pageStartPercent,
-          message: `Rasterizing page ${i} of ${numPages} at 600 DPI...`,
-        });
-
-        // Give event loop time to render the loading animation and state
-        await new Promise((resolve) => setTimeout(resolve, 40));
-
+  const isPdf =
+    file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  onProgress?.({
+    stage: "parsing",
+    fileName: file.name,
+    currentPage: 0,
+    totalPages: 1,
+    percent: 10,
+    message: `Reading ${file.name}…`,
+  });
+  const pages: ExamFile[] = [];
+  try {
+    if (isPdf) {
+      const pdf = await documentFor(file);
+      for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
-        // PDF coordinates use 72 points per inch. Match PyMuPDF's dpi=600;
-        // do not resize student pages to the template before registration.
-        const viewport = page.getViewport({ scale: SCAN_DPI / PDF_POINTS_PER_INCH });
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error(`Could not create canvas for page ${i}`);
-
-        // Avoid adding a pixel for floating-point noise at exact integers
-        // (e.g. an 819pt page can become 6825.000000000001px at 600 DPI).
-        canvas.width = Math.ceil(viewport.width - 1e-7);
-        canvas.height = Math.ceil(viewport.height - 1e-7);
-
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        const dataUrl = canvas.toDataURL('image/png');
-
+        const viewport = page.getViewport({
+          scale: SCAN_DPI / PDF_POINTS_PER_INCH,
+        });
         pages.push({
-          id: `${file.name}-page-${i}-${Date.now()}`,
+          id: crypto.randomUUID(),
           name: `${file.name} (Page ${i})`,
           size: file.size,
-          dataUrl,
+          dataUrl: placeholder,
+          sourceFile: file,
+          sourceKind: "pdf",
           rotation: 0,
           pageIndex: i - 1,
           totalPages: pdf.numPages,
-          width: canvas.width,
-          height: canvas.height,
+          width: Math.ceil(viewport.width - 1e-7),
+          height: Math.ceil(viewport.height - 1e-7),
         });
-
-        const pageEndPercent = Math.round(15 + (i / numPages) * 80);
-        onProgress?.({
-          stage: 'rendering',
-          fileName: file.name,
-          currentPage: i,
-          totalPages: numPages,
-          percent: pageEndPercent,
-          message: `Extracted page ${i} of ${numPages} (${canvas.width}×${canvas.height}px)`,
-        });
-        // Release large raster buffers between pages at the restored resolution.
-        canvas.width = 0;
-        canvas.height = 0;
         page.cleanup();
       }
-    } finally {
-      await pdf.destroy();
+    } else {
+      const url = imageUrl(file);
+      try {
+        const image = await loadImage(url);
+        pages.push({
+          id: crypto.randomUUID(),
+          name: file.name,
+          size: file.size,
+          dataUrl: placeholder,
+          sourceFile: file,
+          sourceKind: "image",
+          rotation: 0,
+          pageIndex: 0,
+          totalPages: 1,
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        });
+      } finally {
+        releaseImage(url);
+      }
     }
-
     onProgress?.({
-      stage: 'completed',
+      stage: "completed",
       fileName: file.name,
-      currentPage: numPages,
-      totalPages: numPages,
+      currentPage: pages.length,
+      totalPages: pages.length,
       percent: 100,
-      message: `Successfully loaded all ${numPages} pages!`,
+      message: `Ready: ${pages.length} page${pages.length === 1 ? "" : "s"}. Previews load as needed.`,
     });
-
     return pages;
-  } else {
-    // Image file
-    onProgress?.({
-      stage: 'reading',
-      fileName: file.name,
-      currentPage: 1,
-      totalPages: 1,
-      percent: 30,
-      message: `Reading image ${file.name}...`,
-    });
-
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        const img = new Image();
-        img.onload = () => {
-          onProgress?.({
-            stage: 'completed',
-            fileName: file.name,
-            currentPage: 1,
-            totalPages: 1,
-            percent: 100,
-            message: `Loaded image ${file.name} (${img.naturalWidth}×${img.naturalHeight}px)`,
-          });
-          resolve([
-            {
-              id: `${file.name}-${Date.now()}`,
-              name: file.name,
-              size: file.size,
-              dataUrl,
-              rotation: 0,
-              pageIndex: 0,
-              totalPages: 1,
-              width: img.naturalWidth || 1200,
-              height: img.naturalHeight || 1600,
-            },
-          ]);
-        };
-        img.onerror = () => reject(new Error('Failed to load image file'));
-        img.src = dataUrl;
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
+  } catch (error) {
+    const source = sources.get(file);
+    sources.delete(file);
+    if (source) void source.then((pdf) => pdf.destroy()).catch(() => {});
+    throw error;
   }
 }
 
-/**
- * Load image from URL (e.g. sample images in public/RDimages)
- */
-export async function loadImageFromUrl(url: string, name: string): Promise<ExamFile> {
+function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Canvas context error'));
-        return;
-      }
-      ctx.drawImage(img, 0, 0);
-      const dataUrl = canvas.toDataURL('image/png');
-
-      resolve({
-        id: `sample-${name}`,
-        name,
-        size: 250000,
-        dataUrl,
-        rotation: 0,
-        pageIndex: 0,
-        totalPages: 1,
-        width: canvas.width,
-        height: canvas.height,
-      });
-    };
-    img.onerror = () => reject(new Error(`Failed to load sample image from ${url}`));
-    img.src = url;
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not read image."));
+    image.src = url;
   });
+}
+
+export interface PageImage {
+  url: string;
+  release: () => void;
+}
+/** Return a disposable page image. Full rasters use exactly the existing 600-DPI render settings. */
+export function getExamPage(
+  file: ExamFile,
+  previewEdge?: number,
+  signal?: AbortSignal,
+): Promise<PageImage> {
+  return queuePage(
+    async () => {
+      if (!file.sourceFile) return { url: file.dataUrl, release: () => {} };
+      const thumbnailKey = `${file.id}:${file.rotation}:${previewEdge}`;
+      const thumbnail = previewEdge && thumbnails.get(thumbnailKey);
+      if (thumbnail) {
+        thumbnails.delete(thumbnailKey);
+        thumbnails.set(thumbnailKey, thumbnail);
+        const url = imageUrl(thumbnail.blob);
+        return { url, release: () => releaseImage(url) };
+      }
+      if (
+        !previewEdge &&
+        cached?.file === file.sourceFile &&
+        cached.page === file.pageIndex &&
+        cached.rotation === file.rotation
+      ) {
+        const url = imageUrl(cached.blob);
+        return { url, release: () => releaseImage(url) };
+      }
+      const canvas = document.createElement("canvas");
+      let page: pdfjsLib.PDFPageProxy | undefined;
+      let sourceUrl: string | undefined;
+      let rotated: HTMLCanvasElement | undefined;
+      const abort = () => renderTask?.cancel();
+      let renderTask: pdfjsLib.RenderTask | undefined;
+      try {
+        signal?.throwIfAborted();
+        if (file.sourceKind === "pdf") {
+          const pdf = await documentFor(file.sourceFile);
+          page = await pdf.getPage(file.pageIndex + 1);
+          const native = page.getViewport({
+            scale: SCAN_DPI / PDF_POINTS_PER_INCH,
+          });
+          const viewport = previewEdge
+            ? page.getViewport({
+                scale:
+                  (SCAN_DPI / PDF_POINTS_PER_INCH) *
+                  Math.min(
+                    1,
+                    previewEdge / Math.max(native.width, native.height),
+                  ),
+              })
+            : native;
+          canvas.width = Math.ceil(viewport.width - 1e-7);
+          canvas.height = Math.ceil(viewport.height - 1e-7);
+          const context = canvas.getContext("2d");
+          if (!context) throw new Error("Could not create page canvas.");
+          renderTask = page.render({ canvasContext: context, viewport });
+          signal?.addEventListener("abort", abort, { once: true });
+          if (signal?.aborted) renderTask.cancel();
+          await renderTask.promise;
+        } else {
+          sourceUrl = imageUrl(file.sourceFile);
+          const image = await loadImage(sourceUrl);
+          const scale = previewEdge
+            ? Math.min(
+                1,
+                previewEdge / Math.max(image.naturalWidth, image.naturalHeight),
+              )
+            : 1;
+          canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+          canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+          canvas
+            .getContext("2d")!
+            .drawImage(image, 0, 0, canvas.width, canvas.height);
+        }
+        signal?.throwIfAborted();
+        let output = canvas;
+        if (file.rotation) {
+          rotated = document.createElement("canvas");
+          const quarter = file.rotation % 180 !== 0;
+          rotated.width = quarter ? canvas.height : canvas.width;
+          rotated.height = quarter ? canvas.width : canvas.height;
+          const context = rotated.getContext("2d")!;
+          context.translate(rotated.width / 2, rotated.height / 2);
+          context.rotate((file.rotation * Math.PI) / 180);
+          context.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+          output = rotated;
+        }
+        const blob = await canvasBlob(output);
+        signal?.throwIfAborted();
+        if (previewEdge && previewEdge <= 512) {
+          thumbnails.set(thumbnailKey, { file: file.sourceFile, blob });
+          while (thumbnails.size > 24)
+            thumbnails.delete(thumbnails.keys().next().value!);
+        }
+        if (!previewEdge)
+          cached = {
+            file: file.sourceFile,
+            page: file.pageIndex,
+            rotation: file.rotation,
+            blob,
+          };
+        const url = imageUrl(blob);
+        return { url, release: () => releaseImage(url) };
+      } finally {
+        signal?.removeEventListener("abort", abort);
+        page?.cleanup();
+        releaseImage(sourceUrl);
+        canvas.width = 0;
+        canvas.height = 0;
+        if (rotated) {
+          rotated.width = 0;
+          rotated.height = 0;
+        }
+      }
+    },
+    !!previewEdge,
+    signal,
+  );
+}
+
+/** Release PDF workers once no retained page uses their source file. */
+export function releaseUnusedSources(
+  previous: ExamFile[],
+  next: ExamFile[],
+): void {
+  const retained = new Set(next.map((page) => page.sourceFile));
+  for (const file of new Set(previous.map((page) => page.sourceFile))) {
+    if (!file || retained.has(file)) continue;
+    const source = sources.get(file);
+    sources.delete(file);
+    if (cached?.file === file) cached = undefined;
+    for (const [key, entry] of thumbnails)
+      if (entry.file === file) thumbnails.delete(key);
+    if (source) void source.then((pdf) => pdf.destroy()).catch(() => {});
+  }
+}
+
+/** Existing image helper, with the source retained for deferred decoding. */
+export async function loadImageFromUrl(
+  url: string,
+  name: string,
+): Promise<ExamFile> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load ${name}`);
+  return (await loadExamFile(new File([await response.blob()], name)))[0];
 }

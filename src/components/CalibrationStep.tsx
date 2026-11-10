@@ -10,6 +10,8 @@ import {
   Maximize2,
 } from 'lucide-react';
 import { CalibrationParams, ExamFile } from '../types';
+import { getExamPage } from '../utils/pdfProcessor';
+import { canvasImage, releaseImage } from '../utils/imageStore';
 import { getCV } from '../utils/cvLoader';
 import {
   renderToCanonicalMat,
@@ -73,6 +75,8 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   // Initialize canonical template & calculate calibration sheet's largest contour rect (Python lines 384-387)
   useEffect(() => {
     let isCancelled = false;
+    const controller = new AbortController();
+    let templateUrl: string | undefined;
     async function initTemplate() {
       setIsInitializingTemplate(true);
       setTemplateError(null);
@@ -81,7 +85,9 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       try {
         const cv = await getCV();
         let rotatedMat: any = null;
-        const rawMat = await renderToCanonicalMat(cv, firstFile.dataUrl);
+        const raster = await getExamPage(firstFile, undefined, controller.signal);
+        let rawMat: any;
+        try { rawMat = await renderToCanonicalMat(cv, raster.url); } finally { raster.release(); }
         let sheetRect: [number, number, number, number];
         try {
           const rotRes = rotation(cv, rawMat);
@@ -100,7 +106,10 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         cv.imshow(canvas, rotatedMat);
         rotatedMat.delete();
 
-        const dataUrl = canvas.toDataURL('image/png');
+        let dataUrl: string;
+        try { dataUrl = await canvasImage(canvas); } finally { canvas.width = 0; canvas.height = 0; }
+        if (isCancelled) { releaseImage(dataUrl); return; }
+        templateUrl = dataUrl;
         canvas.width = 0;
         canvas.height = 0;
         setCanonicalTemplateDataUrl(dataUrl);
@@ -118,15 +127,17 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
           setTemplateError(e?.message || 'Could not align the calibration page.');
         }
       } finally {
-        setIsInitializingTemplate(false);
+        if (!isCancelled) setIsInitializingTemplate(false);
       }
     }
 
     initTemplate();
     return () => {
       isCancelled = true;
+      controller.abort();
+      releaseImage(templateUrl);
     };
-  }, [firstFile.dataUrl]);
+  }, [firstFile.id, firstFile.rotation, firstFile.dataUrl]);
 
   // Draw Main Canvas (Step 1: Select Question Area on canonical template)
   const renderMainCanvas = useCallback(() => {

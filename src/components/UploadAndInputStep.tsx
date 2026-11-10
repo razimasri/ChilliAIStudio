@@ -1,3 +1,4 @@
+import { PagePreview } from './PagePreview';
 import React, { useRef, useState } from 'react';
 import {
   Upload,
@@ -11,7 +12,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { ExamFile, CalibrationParams } from '../types';
-import { loadExamFile, PdfProgressInfo } from '../utils/pdfProcessor';
+import { loadExamFile, releaseUnusedSources, PdfProgressInfo } from '../utils/pdfProcessor';
 import { REAL_SAMPLE_CONFIGS, SAMPLE_STUDENT_NAMES } from '../utils/sampleData';
 import { rotateScanImage } from '../utils/omrEngine';
 import { PdfLoadingOverlay } from './PdfLoadingOverlay';
@@ -67,8 +68,8 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
       message: `Preparing to process ${fileList.length} file${fileList.length > 1 ? 's' : ''}...`,
     });
 
+    const allLoaded: ExamFile[] = [];
     try {
-      const allLoaded: ExamFile[] = [];
       for (let i = 0; i < fileList.length; i++) {
         const loaded = await loadExamFile(fileList[i], (info) => {
           setPdfProgress(info);
@@ -87,7 +88,6 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
         onStudentNamesChange(generated);
       }
 
-      // Brief pause to show 100% completion in the animation
       setPdfProgress((prev) =>
         prev
           ? {
@@ -98,8 +98,8 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
             }
           : null
       );
-      await new Promise((r) => setTimeout(r, 650));
     } catch (err: unknown) {
+      releaseUnusedSources(allLoaded, []);
       console.error(err);
       setErrorMsg(
         err instanceof Error
@@ -131,11 +131,10 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
     const curRot = target.rotation || 0;
     const newRot = (curRot + 90) % 360;
 
-    const rotated = await rotateScanImage(target.dataUrl, 90);
     const updatedFiles = [...files];
     updatedFiles[index] = {
       ...target,
-      dataUrl: rotated,
+      dataUrl: target.sourceFile ? target.dataUrl : await rotateScanImage(target.dataUrl, 90),
       rotation: newRot,
       width: target.height,
       height: target.width,
@@ -225,7 +224,6 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
         percent: 100,
         message: `Successfully loaded ${loadedPages.length} scanned pages from ${fileName}!`,
       });
-      await new Promise((r) => setTimeout(r, 600));
     } catch (err: unknown) {
       console.error(err);
       setErrorMsg(
@@ -347,10 +345,10 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
                   </div>
                 </div>
                 <h3 className="text-lg font-bold text-white">
-                  Rasterizing Scans...
+                  Reading Pages...
                 </h3>
                 <p className="text-xs text-[#f3b0ba] font-mono">
-                  {pdfProgress?.message || 'Processing pages at 600 DPI'}
+                  {pdfProgress?.message || 'Reading page information'}
                 </p>
               </div>
             ) : (
@@ -393,8 +391,8 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
                     className="relative bg-[#18090b] border border-[#571622] rounded-xl p-2 group hover:border-[#8c1529] transition"
                   >
                     <div className="aspect-[3/4] bg-black rounded overflow-hidden mb-2 relative">
-                      <img
-                        src={file.dataUrl}
+                      <PagePreview
+                        file={file}
                         alt={`Page ${idx + 1}`}
                         className="w-full h-full object-contain"
                       />
@@ -520,8 +518,9 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
               </button>
             </div>
             <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
-              <img
-                src={previewFile.dataUrl}
+              <PagePreview
+                file={previewFile}
+                edge={1400}
                 alt="Scan Preview"
                 className="max-h-[75vh] max-w-full object-contain rounded"
               />

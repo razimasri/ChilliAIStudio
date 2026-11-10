@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { UploadAndInputStep } from './components/UploadAndInputStep';
 import { CalibrationStep } from './components/CalibrationStep';
@@ -13,6 +13,8 @@ import {
   AmbiguityResolutionItem,
   QuestionStat,
 } from './types';
+import { getExamPage, releaseUnusedSources } from './utils/pdfProcessor';
+import { releaseAllImages, releaseImage, releaseResultImages } from './utils/imageStore';
 import { getCV } from './utils/cvLoader';
 import { gradeStudent, resolveStudentResponse } from './utils/grading';
 import {
@@ -50,6 +52,18 @@ export function App() {
     names: [],
   });
 
+  const previousFiles = useRef<ExamFile[]>([]);
+  const batchController = useRef<AbortController>();
+  useEffect(() => {
+    releaseUnusedSources(previousFiles.current, files);
+    previousFiles.current = files;
+  }, [files]);
+  useEffect(() => () => {
+    batchController.current?.abort();
+    releaseUnusedSources(previousFiles.current, []);
+    releaseAllImages();
+  }, []);
+
   // Marking state
   const [markingIndex, setMarkingIndex] = useState<number>(0);
   const [progressPercent, setProgressPercent] = useState<number>(0);
@@ -85,6 +99,9 @@ export function App() {
 
   // Trigger grading process matching Python Student.get and Student.mark
   const startMarkingProcess = async () => {
+    batchController.current?.abort();
+    const controller = new AbortController();
+    batchController.current = controller;
     setCurrentStep(3);
     setMarkingIndex(0);
     setProgressPercent(0);
@@ -110,7 +127,11 @@ export function App() {
         const studentName = names[i] || `Student ${String(i + 1).padStart(2, '0')}`;
         setProgressPercent(Math.round(((i + 0.1) / files.length) * 100));
 
-        const scanUrl = files[i].dataUrl;
+        if (controller.signal.aborted) return;
+        setMarkingStatusText(`Preparing page ${i + 1} at 600 DPI...`);
+        // Source loading errors halt the batch rather than becoming blank answers.
+        const raster = await getExamPage(files[i], undefined, controller.signal);
+        const scanUrl = raster.url;
         setMarkingStatusText(`Marking page ${i + 1} (${studentName})...`);
 
         try {
@@ -122,6 +143,9 @@ export function App() {
             activeParams,
             (stepMsg) => setMarkingStatusText(`Page ${i + 1} (${studentName}): ${stepMsg}`)
           );
+          if (controller.signal.aborted) { releaseResultImages([res]); return; }
+          // Full input rasters are temporary; keep only the lightweight source preview.
+          res.originalDataUrl = files[i].dataUrl;
           results.push(res);
 
           if (res.hasAmbiguity && res.incomplete.length > 0) {
@@ -145,27 +169,10 @@ export function App() {
           // Yield to event loop to allow UI updates and memory reclamation
           await new Promise((r) => setTimeout(r, 20));
         } catch (pageErr) {
-          const decodedErr = decodeCVError(cv, pageErr);
-          const errMsg = `Page ${i + 1} (${studentName}) error: ${decodedErr}`;
-          console.error(errMsg, pageErr);
-          setPageErrors((prev) => [...prev, errMsg]);
-
-          // Create a graceful fallback result for this failed page so batch continues
-          const keyLen = Object.keys(key).length || 40;
-          results.push({
-            id: `student-${i}`,
-            index: i,
-            name: studentName,
-            score: 0,
-            total: keyLen,
-            percentage: 0,
-            questions: [],
-            responses: Array(keyLen).fill('Blank'),
-            annotatedDataUrl: scanUrl,
-            originalDataUrl: scanUrl,
-            hasAmbiguity: false,
-            incomplete: [],
-          });
+          if (controller.signal.aborted) return;
+          throw new Error(`Page ${i + 1} (${studentName}) error: ${decodeCVError(cv, pageErr)}`);
+        } finally {
+          raster.release();
         }
 
         setProgressPercent(Math.round(((i + 1) / files.length) * 100));
@@ -181,9 +188,13 @@ export function App() {
         finishMarking(results, activeParams);
       }
     } catch (err) {
+      releaseResultImages(results);
+      if (controller.signal.aborted) return;
       const decoded = decodeCVError(null, err);
       console.error('Fatal error during marking process:', decoded, err);
       setPageErrors((prev) => [...prev, `Batch execution halted: ${decoded}`]);
+    } finally {
+      if (controller.signal.aborted) releaseResultImages(results);
     }
   };
 
@@ -215,17 +226,20 @@ export function App() {
       setCurrentAmbiguityIdx((prev) => prev + 1);
     } else {
       setAmbiguityQueue([]);
-      // Bake final annotations for all students matching ChilliMark.py correction_update()
+      // Only corrected students need new annotation images.
       try {
         const cv = await getCV();
-        for (let i = 0; i < updatedResults.length; i++) {
+        const corrected = new Set(ambiguityQueue.map(item => item.studentIndex));
+        for (const i of corrected) {
           const student = updatedResults[i];
-          if (student.hasAmbiguity || student.rawDeskewedDataUrl) {
+          if (student.rawDeskewedDataUrl) {
+            const oldImage = student.annotatedDataUrl;
             student.annotatedDataUrl = await renderStudentFinalAnnotation(
               cv,
               student,
               { ...params, key }
             );
+            if (oldImage !== student.rawDeskewedDataUrl) releaseImage(oldImage);
           }
         }
       } catch (annoErr) {
@@ -245,6 +259,9 @@ export function App() {
   };
 
   const handleReset = () => {
+    batchController.current?.abort();
+    releaseResultImages(studentResults);
+    releaseAllImages();
     setCurrentStep(1);
     setFiles([]);
     setStudentResults([]);
@@ -305,6 +322,7 @@ export function App() {
             progressPercent={progressPercent}
             statusText={markingStatusText}
             pageErrors={pageErrors}
+            onBack={() => { batchController.current?.abort(); setCurrentStep(1); }}
           />
         )}
 

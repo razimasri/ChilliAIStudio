@@ -118,8 +118,8 @@ npm run test:geometry
 ```
 
 To use an existing Chromium installation, set `CHROMIUM_PATH` to its executable.
-The check loads both complete sample PDFs at 600 DPI, checks every page's native
-size, and runs detection and correction rendering on two pages from each sample.
+The check reads both complete sample PDFs, checks every page's native 600-DPI
+size, and renders/detects/corrects two full-resolution pages from each sample.
 This requires more time and memory than low-resolution previews; it checks the
 coordinate pipeline, not recognition accuracy against a manually verified key.
 
@@ -155,3 +155,37 @@ includes both reports alongside the annotated sheets.
 Run `npm run test:results` (with `CHROMIUM_PATH` if needed) to check the results
 navigation and actual CSV/ZIP downloads. This test uses Python's standard CSV
 reader to validate quoted, Unicode, comma-containing, and multiline names.
+
+## Deferred page preparation and exports
+
+Upload reads PDF page metadata without rendering every page. Visible thumbnails
+use small rasters (360 pixels on the longest edge); the enlarged preview uses
+1400 pixels. Calibration and marking request the original 600-DPI pixels through
+a single raster queue, ahead of waiting thumbnails. Manual rotation is applied
+when a raster is requested. One full page and at most 24 small previews are
+cached. Removing the last page from a document releases its PDF worker and
+cached images. Clearing/resetting also revokes owned image URLs.
+
+PNG output uses asynchronous Blob encoding rather than retained base64 strings.
+Only ambiguous pages retain a clean registered raster for final correction
+rendering, and only corrected students are rendered again after review. ZIP
+assembly runs in one disposable worker per export; leaving results cancels it.
+OpenCV initializes once, on demand, using the same npm runtime as before. PDF.js
+already parses documents in its own worker. MCQ detection, thresholds, row logic,
+response reading and scoring are unchanged and still run on the main thread.
+
+A local Chromium comparison on the 14-page IGCSE sample measured metadata load
+at approximately 0.5–1.7 seconds, compared with 24 seconds for the previous eager
+load/render/encode path. First full-page preparation took approximately 1.4–2.1
+seconds when requested. These are individual local runs, not a cross-device
+benchmark or an end-to-end marking speed claim. The old upload retained about
+217 million base64 characters; the new upload retains source files and metadata,
+then renders small previews. No browser resident-memory peak was measured.
+
+Run `npm run test:loading` (with `CHROMIUM_PATH` if needed). It compares more than
+68 million full-resolution pixels against the previous PDF viewport/render
+settings, including rotation; checks metadata-only loading, preview/cache bounds,
+queue priority, cancellation, URL cleanup, and the actual upload/rotate/remove/
+clear workflow. Existing geometry, calibration, grading, branding and export
+regressions remain applicable. Rendering/recognition errors halt marking for
+review instead of producing a fabricated zero score.
