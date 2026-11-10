@@ -157,7 +157,7 @@ export const PdfLoadingOverlay: React.FC<PdfLoadingOverlayProps> = ({
               </span>
               <span className="flex items-center gap-1 text-[#f3b0ba]">
                 <Sparkles className="w-3 h-3 text-amber-400" />
-                <span>3.5× Optical Zoom Factor</span>
+                <span>600 DPI page rendering</span>
               </span>
             </div>
           </div>
@@ -166,7 +166,7 @@ export const PdfLoadingOverlay: React.FC<PdfLoadingOverlayProps> = ({
           <div className="pt-2">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#1c080b] border border-[#571622] text-[11px] text-[#b1a1a4]">
               <span className="w-1.5 h-1.5 rounded-full bg-[#ff3b5c]" />
-              <span>ChilliMark OMR Engine ensures zero-loss subpixel edge fidelity</span>
+              <span>Preserving page dimensions for scan alignment</span>
             </div>
           </div>
         </div>
