@@ -63,7 +63,7 @@ try {
     return {printed,score:student.score,total:student.total,percentage:student.percentage};
   });
   assert.equal(report.score,4);assert.equal(report.total,27);assert.equal(report.percentage,15);
-  await page.getByRole('button',{name:/Annotated Marked Sheets/}).click();
+  await page.getByRole('tab',{name:/Annotated Marked Sheets/}).click();
   await page.getByText('4 / 27 (15%)',{exact:true}).waitFor();
   const [file]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'Download Sheet (PNG)',exact:true}).last().click()]);
   assert.match(file.suggestedFilename(),/4of27/);

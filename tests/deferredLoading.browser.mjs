@@ -254,7 +254,7 @@ try {
     true,
     "Upload/rotate must not rasterize full pages",
   );
-  await page.getByRole("button", { name: "Clear All" }).click();
+  await page.getByRole("button", { name: "Clear pages & names" }).click();
   await page.waitForFunction(() => window.livePreviews.size === 0);
   assert.equal(await page.getByTitle("Rotate 90°").count(), 0);
   console.log(

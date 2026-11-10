@@ -24,7 +24,7 @@ export const MarkingAnimationStep: React.FC<MarkingAnimationStepProps> = ({
 }) => {
   return (
     <div className="max-w-4xl mx-auto px-4 py-12 text-center space-y-6">
-      {onBack && <button onClick={onBack} className="rounded-lg bg-[#8c1529] px-4 py-2 text-white">{pageErrors.length ? 'Back to upload' : 'Cancel marking'}</button>}
+      {onBack && <button onClick={onBack} className="rounded-lg bg-[#8c1529] px-4 py-2 text-white">{pageErrors.length ? 'Back to setup' : 'Cancel marking'}</button>}
       {/* Animated Chilli Header */}
       <div className="relative inline-flex items-center justify-center">
         <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-[#8c1529] to-[#571622] flex items-center justify-center shadow-2xl shadow-[#8c1529]/40 border-2 border-[#b1a1a4]/30 animate-pulse">
@@ -61,7 +61,7 @@ export const MarkingAnimationStep: React.FC<MarkingAnimationStepProps> = ({
         <div className="flex items-center justify-between text-xs text-[#a39093]">
           <span className="flex items-center gap-1">
             <Clock className="w-3.5 h-3.5" />
-            <span>Scanning contours & dark fill</span>
+            <span>Checking answer boxes</span>
           </span>
           <span className="font-mono font-bold text-white">{progressPercent}%</span>
         </div>

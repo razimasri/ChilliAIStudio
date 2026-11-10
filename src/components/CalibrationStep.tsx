@@ -1,14 +1,5 @@
+import { useCanvasPointer } from '../utils/useCanvasPointer';
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import {
-  ArrowLeft,
-  Crop,
-  Square,
-  CheckCircle2,
-  RefreshCw,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
-} from 'lucide-react';
 import { CalibrationParams, ExamFile } from '../types';
 import { getExamPage } from '../utils/pdfProcessor';
 import { canvasImage, releaseImage } from '../utils/imageStore';
@@ -25,7 +16,6 @@ interface CalibrationStepProps {
   firstFile: ExamFile;
   params: CalibrationParams;
   onParamsChange: (params: CalibrationParams) => void;
-  onUpdateFile: (file: ExamFile) => void;
   onBack: () => void;
   onProceedToMark: () => void;
 }
@@ -39,14 +29,16 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 }) => {
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const boxCanvasRef = useRef<HTMLCanvasElement>(null);
-  const boxScrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Calibration stages:
   // Stage 1: "Select the question area"
   // Stage 2: "Now select one empty box"
   const [step, setStep] = useState<'qArea' | 'sampleBox'>('qArea');
-  const [isInitializingTemplate, setIsInitializingTemplate] = useState<boolean>(true);
-  const [canonicalTemplateDataUrl, setCanonicalTemplateDataUrl] = useState<string | null>(null);
+  const [isInitializingTemplate, setIsInitializingTemplate] =
+    useState<boolean>(true);
+  const [canonicalTemplateDataUrl, setCanonicalTemplateDataUrl] = useState<
+    string | null
+  >(null);
 
   // Zoom controls for Step 1 (Question Area)
   const [qZoom, setQZoom] = useState<number>(1.0);
@@ -59,16 +51,21 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   // Drawing state for Question Area (on canonical main canvas)
   const [isDrawingQ, setIsDrawingQ] = useState(false);
   const [qStart, setQStart] = useState<{ x: number; y: number } | null>(null);
-  const [qCurrent, setQCurrent] = useState<{ x: number; y: number } | null>(null);
+  const [qCurrent, setQCurrent] = useState<{ x: number; y: number } | null>(
+    null,
+  );
 
   // Drawing state for Sample Box (on cropped Q-Area canvas)
   const [isDrawingBox, setIsDrawingBox] = useState(false);
-  const [boxStart, setBoxStart] = useState<{ x: number; y: number } | null>(null);
-  const [boxCurrent, setBoxCurrent] = useState<{ x: number; y: number } | null>(null);
+  const [boxStart, setBoxStart] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [boxCurrent, setBoxCurrent] = useState<{ x: number; y: number } | null>(
+    null,
+  );
 
   const [hasValidBox, setHasValidBox] = useState(params.w > 0 && params.h > 0);
   const [qAreaImage, setQAreaImage] = useState<HTMLCanvasElement | null>(null);
-  const [boxPreviewDataUrl, setBoxPreviewDataUrl] = useState<string | null>(null);
 
   const [templateError, setTemplateError] = useState<string | null>(null);
 
@@ -85,9 +82,17 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       try {
         const cv = await getCV();
         let rotatedMat: any = null;
-        const raster = await getExamPage(firstFile, undefined, controller.signal);
+        const raster = await getExamPage(
+          firstFile,
+          undefined,
+          controller.signal,
+        );
         let rawMat: any;
-        try { rawMat = await renderToCanonicalMat(cv, raster.url); } finally { raster.release(); }
+        try {
+          rawMat = await renderToCanonicalMat(cv, raster.url);
+        } finally {
+          raster.release();
+        }
         let sheetRect: [number, number, number, number];
         try {
           const rotRes = rotation(cv, rawMat);
@@ -107,8 +112,16 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         rotatedMat.delete();
 
         let dataUrl: string;
-        try { dataUrl = await canvasImage(canvas); } finally { canvas.width = 0; canvas.height = 0; }
-        if (isCancelled) { releaseImage(dataUrl); return; }
+        try {
+          dataUrl = await canvasImage(canvas);
+        } finally {
+          canvas.width = 0;
+          canvas.height = 0;
+        }
+        if (isCancelled) {
+          releaseImage(dataUrl);
+          return;
+        }
         templateUrl = dataUrl;
         canvas.width = 0;
         canvas.height = 0;
@@ -124,7 +137,9 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         if (!isCancelled) {
           // A raw 600-DPI page is not in template coordinates. Do not let a
           // failed initialization accept selections in a different frame.
-          setTemplateError(e?.message || 'Could not align the calibration page.');
+          setTemplateError(
+            e?.message || 'Could not align the calibration page.',
+          );
         }
       } finally {
         if (!isCancelled) setIsInitializingTemplate(false);
@@ -192,11 +207,23 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       }
     };
     img.src = canonicalTemplateDataUrl;
-  }, [canonicalTemplateDataUrl, params.x1, params.y1, params.x2, params.y2, isDrawingQ, qStart, qCurrent]);
+    return () => {
+      img.onload = null;
+    };
+  }, [
+    canonicalTemplateDataUrl,
+    params.x1,
+    params.y1,
+    params.x2,
+    params.y2,
+    isDrawingQ,
+    qStart,
+    qCurrent,
+  ]);
 
   useEffect(() => {
-    renderMainCanvas();
-  }, [renderMainCanvas]);
+    return renderMainCanvas();
+  }, [renderMainCanvas, step, isInitializingTemplate]);
 
   // Update Cropped Question Area Canvas for Step 2
   const updateQAreaCanvas = useCallback(() => {
@@ -230,11 +257,14 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       }
     };
     img.src = canonicalTemplateDataUrl;
+    return () => {
+      img.onload = null;
+    };
   }, [canonicalTemplateDataUrl, params.x1, params.y1, params.x2, params.y2]);
 
   useEffect(() => {
-    updateQAreaCanvas();
-  }, [updateQAreaCanvas, step]);
+    return updateQAreaCanvas();
+  }, [updateQAreaCanvas]);
 
   // Draw Sample Box Canvas (Step 2: Select One Empty Box)
   const renderBoxCanvas = useCallback(() => {
@@ -303,52 +333,27 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 
   useEffect(() => {
     renderBoxCanvas();
-  }, [renderBoxCanvas]);
+  }, [renderBoxCanvas, step]);
 
+  const [tool, setTool] = useState<'draw' | 'pan'>('draw');
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const [workspace, setWorkspace] = useState({ width: 600, height: 600 });
   useEffect(() => {
-    if (step === 'sampleBox') {
-      updateQAreaCanvas();
-      const timer = setTimeout(() => {
-        renderBoxCanvas();
-      }, 40);
-      return () => clearTimeout(timer);
-    }
-  }, [step, updateQAreaCanvas, renderBoxCanvas]);
-
-  // Main canvas mouse handlers (Question Area drag)
-  const handleMainMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = mainCanvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-
-    setIsDrawingQ(true);
-    setQStart({ x, y });
-    setQCurrent({ x, y });
-  };
-
-  const handleMainMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawingQ || !qStart) return;
-    const canvas = mainCanvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const x = Math.max(0, Math.min(canvas.width, (e.clientX - rect.left) * scaleX));
-    const y = Math.max(0, Math.min(canvas.height, (e.clientY - rect.top) * scaleY));
-
-    setQCurrent({ x, y });
-  };
-
-  const handleMainMouseUp = () => {
-    if (!isDrawingQ || !qStart || !qCurrent) return;
-    setIsDrawingQ(false);
-
+    const element = workspaceRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() =>
+      setWorkspace({
+        width: element.clientWidth,
+        height: element.clientHeight,
+      }),
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const commitArea = (
+    qStart: { x: number; y: number },
+    qCurrent: { x: number; y: number },
+  ) => {
     const x1 = Math.round(Math.min(qStart.x, qCurrent.x));
     const y1 = Math.round(Math.min(qStart.y, qCurrent.y));
     const x2 = Math.round(Math.max(qStart.x, qCurrent.x));
@@ -363,46 +368,16 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         x2,
         y2,
       });
-      setStep('sampleBox');
       setZoomLevel(1.5);
     }
   };
-
-  // Box canvas mouse handlers (Sample Box drag)
-  const handleBoxMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = boxCanvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-
-    setIsDrawingBox(true);
-    setBoxStart({ x, y });
-    setBoxCurrent({ x, y });
-  };
-
-  const handleBoxMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawingBox || !boxStart) return;
-    const canvas = boxCanvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const x = Math.max(0, Math.min(canvas.width, (e.clientX - rect.left) * scaleX));
-    const y = Math.max(0, Math.min(canvas.height, (e.clientY - rect.top) * scaleY));
-
-    setBoxCurrent({ x, y });
-  };
-
-  const handleBoxMouseUp = async () => {
-    if (!isDrawingBox || !boxStart || !boxCurrent || !canonicalTemplateDataUrl) return;
-    setIsDrawingBox(false);
+  const commitBox = async (
+    boxStart: { x: number; y: number },
+    boxCurrent: { x: number; y: number },
+  ) => {
+    if (!canonicalTemplateDataUrl || isSnapping) return;
     setHasValidBox(false);
-
+    setSnapStatus(null);
     const localX1 = Math.round(Math.min(boxStart.x, boxCurrent.x));
     const localY1 = Math.round(Math.min(boxStart.y, boxCurrent.y));
     const localX2 = Math.round(Math.max(boxStart.x, boxCurrent.x));
@@ -412,7 +387,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 
     if (bw > 10 && bh > 10) {
       setIsSnapping(true);
-      setSnapStatus('Extracting box contours using Parameters.set_box...');
+      setSnapStatus('Checking the empty box…');
 
       try {
         const cv = await getCV();
@@ -426,14 +401,23 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 
         let boxResult: ReturnType<typeof set_box>;
         try {
-          boxResult = set_box(cv, tMat, pageBoxX1, pageBoxY1, pageBoxX2, pageBoxY2);
+          boxResult = set_box(
+            cv,
+            tMat,
+            pageBoxX1,
+            pageBoxY1,
+            pageBoxX2,
+            pageBoxY2,
+          );
         } finally {
           tMat.delete();
         }
 
         // Use exact detected outer contour bounding position if available, fallback to user drag
-        const detectedBoxX1 = typeof boxResult.x === 'number' ? boxResult.x : pageBoxX1;
-        const detectedBoxY1 = typeof boxResult.y === 'number' ? boxResult.y : pageBoxY1;
+        const detectedBoxX1 =
+          typeof boxResult.x === 'number' ? boxResult.x : pageBoxX1;
+        const detectedBoxY1 =
+          typeof boxResult.y === 'number' ? boxResult.y : pageBoxY1;
 
         onParamsChange({
           ...params,
@@ -450,334 +434,271 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
           font_size: boxResult.font_size,
         });
 
-        if (qAreaImage) {
-          const prevCanvas = document.createElement('canvas');
-          prevCanvas.width = Math.max(10, boxResult.w);
-          prevCanvas.height = Math.max(10, boxResult.h);
-          const pCtx = prevCanvas.getContext('2d')!;
-          const cropX = Math.max(0, detectedBoxX1 - params.x1);
-          const cropY = Math.max(0, detectedBoxY1 - params.y1);
-          pCtx.drawImage(
-            qAreaImage,
-            cropX,
-            cropY,
-            boxResult.w,
-            boxResult.h,
-            0,
-            0,
-            boxResult.w,
-            boxResult.h
-          );
-          setBoxPreviewDataUrl(prevCanvas.toDataURL());
-        }
-
         setHasValidBox(true);
-        setSnapStatus('Box parameters successfully derived!');
+        setSnapStatus('Empty box ready');
       } catch (err: any) {
         console.error('Error during set_box:', err);
-        setSnapStatus(err instanceof Error ? err.message : 'Could not extract the box contour. Please select another empty box.');
+        setSnapStatus(
+          err instanceof Error
+            ? err.message
+            : 'Could not extract the box contour. Please select another empty box.',
+        );
       } finally {
         setIsSnapping(false);
       }
     }
   };
+  const mainPointer = useCanvasPointer({
+    mode: tool,
+    disabled: isInitializingTemplate || !!templateError,
+    viewport: workspaceRef,
+    onPreview: (start, end, drawing) => {
+      setQStart(start);
+      setQCurrent(end);
+      setIsDrawingQ(drawing);
+    },
+    onCommit: commitArea,
+  });
+  const boxPointer = useCanvasPointer({
+    mode: tool,
+    disabled: isSnapping,
+    viewport: workspaceRef,
+    onPreview: (start, end, drawing) => {
+      setBoxStart(start);
+      setBoxCurrent(end);
+      setIsDrawingBox(drawing);
+    },
+    onCommit: (start, end) => {
+      void commitBox(start, end);
+    },
+  });
+  const nativeWidth =
+    step === 'qArea' ? TEMPLATE_WIDTH : qAreaImage?.width || 1;
+  const nativeHeight =
+    step === 'qArea' ? TEMPLATE_HEIGHT : qAreaImage?.height || 1;
+  const fit = Math.min(
+    1,
+    Math.max(1, workspace.width - 32) / nativeWidth,
+    Math.max(1, workspace.height - 32) / nativeHeight,
+  );
+  const zoom = step === 'qArea' ? qZoom : zoomLevel;
+  const setZoom = step === 'qArea' ? setQZoom : setZoomLevel;
+  const changeStep = (next: 'qArea' | 'sampleBox') => {
+    setTool('draw');
+    setStep(next);
+    if (workspaceRef.current) {
+      workspaceRef.current.scrollLeft = 0;
+      workspaceRef.current.scrollTop = 0;
+    }
+  };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] bg-slate-900 text-slate-100 overflow-hidden">
-      {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-slate-800 bg-slate-900/90 backdrop-blur z-20">
-        <div className="flex items-center space-x-4">
+    <div className="h-[calc(100dvh-4rem)] min-h-80 flex flex-col bg-[#18090b] text-[#f3e7e9]">
+      <div className="shrink-0 border-b border-[#571622] bg-[#240c10] px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+        <button
+          onClick={onBack}
+          className="min-h-11 px-2 rounded-lg hover:bg-[#571622]"
+        >
+          ← Back to setup
+        </button>
+        <h2 className="font-bold text-base">
+          {step === 'qArea' ? 'Select question area' : 'Select one empty box'}
+        </h2>
+        <nav
+          aria-label="Calibration steps"
+          className="flex gap-2 w-full sm:w-auto"
+        >
           <button
-            onClick={onBack}
-            className="flex items-center text-slate-400 hover:text-white transition-colors"
+            aria-current={step === 'qArea' ? 'step' : undefined}
+            onClick={() => changeStep('qArea')}
+            className={`min-h-11 flex-1 px-3 rounded-lg text-sm ${step === 'qArea' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
           >
-            <ArrowLeft className="w-5 h-5 mr-1" />
-            <span>Back</span>
+            1. Question area
           </button>
-          <div className="h-4 w-px bg-slate-700" />
-          <h2 className="text-lg font-semibold text-white">
-            {step === 'qArea'
-              ? 'Select Question Area'
-              : 'Select Sample Empty Box'}
-          </h2>
-        </div>
-
-        {/* Step Indicator */}
-        <div className="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
           <button
-            onClick={() => setStep('qArea')}
-            className={`flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
-              step === 'qArea'
-                ? 'bg-[#8c1529] text-white shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
+            aria-current={step === 'sampleBox' ? 'step' : undefined}
+            disabled={
+              isInitializingTemplate ||
+              !!templateError ||
+              params.x2 <= params.x1
+            }
+            onClick={() => changeStep('sampleBox')}
+            className={`min-h-11 flex-1 px-3 rounded-lg text-sm disabled:opacity-40 ${step === 'sampleBox' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
           >
-            <Crop className="w-3.5 h-3.5" />
-            <span>1. Question Area</span>
+            2. Empty box
           </button>
-          <span className="text-slate-600">/</span>
-          <button
-            onClick={() => params.x2 > params.x1 && setStep('sampleBox')}
-            disabled={isInitializingTemplate || !!templateError || !canonicalTemplateDataUrl || params.x2 <= params.x1}
-            className={`flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
-              step === 'sampleBox'
-                ? 'bg-[#8c1529] text-white shadow'
-                : params.x2 > params.x1
-                ? 'text-slate-400 hover:text-white'
-                : 'text-slate-600 cursor-not-allowed'
-            }`}
+        </nav>
+      </div>
+      <div className="shrink-0 px-4 py-2 bg-[#240c10] border-b border-[#571622] space-y-2">
+        <p id="canvas-help" className="text-sm text-[#d8c7ca]">
+          {step === 'qArea'
+            ? 'Draw a rectangle around the complete answer grid, then choose Next.'
+            : 'Zoom in and draw a snug rectangle around one clean, unmarked answer box.'}
+        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div
+            className="flex items-center gap-1"
+            role="group"
+            aria-label="Canvas tool"
           >
-            <Square className="w-3.5 h-3.5" />
-            <span>2. Sample Box</span>
-          </button>
-        </div>
-
-        {/* Action Button */}
-        <div className="flex items-center space-x-3">
-          {step === 'qArea' ? (
             <button
-              onClick={() => setStep('sampleBox')}
-              disabled={isInitializingTemplate || !!templateError || !canonicalTemplateDataUrl || params.x2 <= params.x1}
-              className="px-5 py-2 bg-[#8c1529] hover:bg-[#a31a32] disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg shadow-lg shadow-rose-950/30 transition-all flex items-center space-x-2"
+              aria-pressed={tool === 'draw'}
+              onClick={() => setTool('draw')}
+              className={`min-h-11 px-3 rounded-lg ${tool === 'draw' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
             >
-              <span>Next: Select Box</span>
+              Draw
             </button>
-          ) : (
             <button
-              onClick={onProceedToMark}
-              disabled={isInitializingTemplate || !!templateError || !canonicalTemplateDataUrl || !hasValidBox}
-              className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg shadow-lg shadow-emerald-950/30 transition-all flex items-center space-x-2"
+              aria-pressed={tool === 'pan'}
+              onClick={() => setTool('pan')}
+              className={`min-h-11 px-3 rounded-lg ${tool === 'pan' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Mark Exams</span>
+              Pan
             </button>
-          )}
+          </div>
+          <div
+            className="flex items-center gap-1"
+            role="group"
+            aria-label="Zoom"
+          >
+            <button
+              title="Zoom Out"
+              aria-label="Zoom out"
+              onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
+              className="min-h-11 min-w-11 rounded-lg bg-[#18090b]"
+            >
+              −
+            </button>
+            <span className="min-w-12 text-sm text-center">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              title="Zoom In"
+              aria-label="Zoom in"
+              onClick={() => setZoom((z) => Math.min(12, z + 0.25))}
+              className="min-h-11 min-w-11 rounded-lg bg-[#18090b]"
+            >
+              +
+            </button>
+            <button
+              onClick={() => setZoom(1)}
+              className="min-h-11 px-3 rounded-lg bg-[#18090b]"
+            >
+              Fit
+            </button>
+          </div>
         </div>
       </div>
-
-      {/* Main Workspace Area */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {isInitializingTemplate && (
-          <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center space-y-3">
-            <RefreshCw className="w-8 h-8 text-rose-500 animate-spin" />
-            <p className="text-sm font-medium text-slate-300">
-              Deskewing and calibrating canonical coordinate space...
-            </p>
+      <div
+        ref={workspaceRef}
+        className="flex-1 min-h-0 overflow-auto overscroll-contain relative"
+        aria-busy={isInitializingTemplate || isSnapping}
+      >
+        {isInitializingTemplate ? (
+          <div role="status" className="p-8 text-center">
+            Preparing the first page for calibration…
           </div>
-        )}
-
-        {templateError && (
-          <div role="alert" className="absolute inset-0 bg-slate-900 z-30 flex items-center justify-center p-8 text-rose-300">
-            Could not calibrate this page: {templateError} Go back to check the scan resolution and orientation.
+        ) : templateError ? (
+          <div role="alert" className="p-8 text-rose-300">
+            Could not prepare this page: {templateError} Go back and check the
+            scan orientation and resolution.
           </div>
-        )}
-
-        {/* Step 1: Select Question Area on canonical page */}
-        {step === 'qArea' && (
-          <div className="flex-1 flex flex-col bg-slate-950/60 overflow-hidden">
-            {/* Step 1 Toolbar */}
-            <div className="flex items-center justify-between px-6 py-2 bg-slate-900/60 border-b border-slate-800 text-xs">
-              <div className="flex items-center space-x-2 text-slate-300">
-                <Crop className="w-4 h-4 text-rose-400" />
-                <span>
-                  Click and drag to select the complete <strong>question region</strong>. The entire page is visible below.
-                </span>
-              </div>
-
-              {/* Zoom & Fit controls */}
-              <div className="flex items-center space-x-3">
-                {params.x2 > params.x1 && (
-                  <button
-                    onClick={() => {
-                      onParamsChange({
-                        ...params,
-                        x1: 0,
-                        y1: 0,
-                        x2: 0,
-                        y2: 0,
-                      });
-                    }}
-                    className="text-xs text-rose-400 hover:text-rose-300 hover:underline"
-                  >
-                    Clear Selection
-                  </button>
-                )}
-                <div className="flex items-center space-x-2 bg-slate-800 px-2 py-1 rounded border border-slate-700">
-                  <button
-                    onClick={() => setQZoom((z) => Math.max(0.6, z - 0.2))}
-                    className="p-1 hover:text-white text-slate-400"
-                    title="Zoom Out"
-                  >
-                    <ZoomOut className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="text-slate-300 font-mono text-[11px] min-w-[50px] text-center">
-                    {qZoom === 1.0 ? 'Fit' : `${Math.round(qZoom * 100)}%`}
-                  </span>
-                  <button
-                    onClick={() => setQZoom((z) => Math.min(2.5, z + 0.2))}
-                    className="p-1 hover:text-white text-slate-400"
-                    title="Zoom In"
-                  >
-                    <ZoomIn className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setQZoom(1.0)}
-                    className="p-1 hover:text-white text-slate-400 border-l border-slate-700 pl-2 text-[11px] font-medium"
-                    title="Fit to Screen"
-                  >
-                    Fit Page
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Scrollable canvas workspace */}
-            <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
-              <div
-                className="relative border border-slate-700 rounded-lg shadow-2xl bg-slate-900 inline-block transition-transform duration-100"
-                style={{
-                  transform: qZoom !== 1.0 ? `scale(${qZoom})` : undefined,
-                  transformOrigin: 'top center',
-                }}
-              >
+        ) : (
+          <div className="min-h-full min-w-full w-max p-4 flex">
+            <div
+              className="shrink-0 m-auto shadow-xl"
+              style={{
+                width: Math.max(1, Math.round(nativeWidth * fit * zoom)),
+                height: Math.max(1, Math.round(nativeHeight * fit * zoom)),
+              }}
+            >
+              {step === 'qArea' ? (
                 <canvas
                   ref={mainCanvasRef}
-                  width={4800}
-                  height={6840}
-                  onMouseDown={handleMainMouseDown}
-                  onMouseMove={handleMainMouseMove}
-                  onMouseUp={handleMainMouseUp}
-                  className="cursor-crosshair block bg-white"
+                  width={TEMPLATE_WIDTH}
+                  height={TEMPLATE_HEIGHT}
+                  {...mainPointer}
+                  aria-label="Question area selection"
+                  aria-describedby="canvas-help"
+                  className="block bg-white w-full h-full"
                   style={{
-                    maxHeight: 'calc(100vh - 200px)',
-                    maxWidth: 'calc(100vw - 80px)',
-                    width: 'auto',
-                    height: 'auto',
-                    objectFit: 'contain',
-                    aspectRatio: '4800 / 6840',
+                    touchAction: 'none',
+                    cursor: tool === 'pan' ? 'grab' : 'crosshair',
                   }}
                 />
-              </div>
-            </div>
-
-            {/* Step 1 Bottom Status Bar */}
-            <div className="bg-slate-900 border-t border-slate-800 px-6 py-2.5 flex items-center justify-between text-xs text-slate-400">
-              <div className="flex items-center space-x-3">
-                {params.x2 > params.x1 ? (
-                  <span className="text-emerald-400 font-medium">
-                    Question Area Selected: <strong className="font-mono text-white">{params.x2 - params.x1} × {params.y2 - params.y1} px</strong>
-                  </span>
-                ) : (
-                  <span>Drag across the question region above</span>
-                )}
-              </div>
-              <span className="font-mono text-slate-500">
-                Calibration Template: 4800 × 6840 px (from a 600 DPI scan)
-              </span>
+              ) : (
+                <canvas
+                  ref={boxCanvasRef}
+                  {...boxPointer}
+                  aria-label="Empty box selection"
+                  aria-describedby="canvas-help"
+                  className="block bg-white w-full h-full"
+                  style={{
+                    touchAction: 'none',
+                    cursor: tool === 'pan' ? 'grab' : 'crosshair',
+                  }}
+                />
+              )}
             </div>
           </div>
         )}
-
-        {/* Step 2: Select Sample Empty Box */}
-        {step === 'sampleBox' && (
-          <div className="flex-1 flex flex-col bg-slate-950/60 overflow-hidden">
-            {/* Toolbar */}
-            <div className="flex items-center justify-between px-6 py-2 bg-slate-900/60 border-b border-slate-800 text-xs">
-              <div className="flex items-center space-x-2 text-slate-300">
-                <Square className="w-4 h-4 text-rose-400" />
-                <span>
-                  Drag a snug rectangle around <strong>ONE empty answer box</strong> to derive contour dimensions and fill threshold.
-                </span>
-              </div>
-
-              {/* Zoom controls */}
-              <div className="flex items-center space-x-2 bg-slate-800 px-2 py-1 rounded border border-slate-700">
+      </div>
+      <div className="shrink-0 border-t border-[#571622] bg-[#240c10] px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex flex-wrap items-center justify-between gap-2">
+        <div role="status" className="text-sm min-w-0">
+          {step === 'qArea' ? (
+            <>
+              <p>
+                {params.x2 > params.x1
+                  ? 'Question area selected. Review it, then continue.'
+                  : 'Use Draw to select the answer grid. Use Pan to move a zoomed page.'}
+              </p>
+              {params.x2 > params.x1 && (
                 <button
-                  onClick={() => setZoomLevel((z) => Math.max(0.75, z - 0.25))}
-                  className="p-1 hover:text-white text-slate-400"
-                  title="Zoom Out"
+                  onClick={() => {
+                    setHasValidBox(false);
+                    onParamsChange({ ...params, x1: 0, y1: 0, x2: 0, y2: 0 });
+                  }}
+                  className="min-h-11 text-rose-300"
                 >
-                  <ZoomOut className="w-3.5 h-3.5" />
+                  Clear selection
                 </button>
-                <span className="text-slate-300 font-mono text-[11px] min-w-[40px] text-center">
-                  {Math.round(zoomLevel * 100)}%
-                </span>
-                <button
-                  onClick={() => setZoomLevel((z) => Math.min(3, z + 0.25))}
-                  className="p-1 hover:text-white text-slate-400"
-                  title="Zoom In"
-                >
-                  <ZoomIn className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => setZoomLevel(1.5)}
-                  className="p-1 hover:text-white text-slate-400 border-l border-slate-700 pl-2"
-                  title="Reset Zoom"
-                >
-                  <Maximize2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable Box Canvas */}
-            <div
-              ref={boxScrollContainerRef}
-              className="flex-1 overflow-auto p-6 flex items-start justify-center"
-            >
-              <div
-                className="relative border border-slate-700 rounded-lg shadow-2xl bg-slate-900 inline-block transition-transform duration-100 origin-top"
-                style={{
-                  transform: `scale(${zoomLevel})`,
-                  transformOrigin: 'top center',
-                }}
-              >
-                <canvas
-                  ref={boxCanvasRef}
-                  onMouseDown={handleBoxMouseDown}
-                  onMouseMove={handleBoxMouseMove}
-                  onMouseUp={handleBoxMouseUp}
-                  className="cursor-crosshair block"
-                  style={{ imageRendering: 'pixelated' }}
-                />
-              </div>
-            </div>
-
-            {/* Bottom Status / Derived Parameters Card */}
-            <div className="bg-slate-900 border-t border-slate-800 px-6 py-3 flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                {boxPreviewDataUrl && (
-                  <div className="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
-                    <span className="text-xs text-slate-400">Sample Box:</span>
-                    <img
-                      src={boxPreviewDataUrl}
-                      alt="Sample Box"
-                      className="w-7 h-7 object-contain bg-white border border-slate-600 rounded"
-                    />
-                  </div>
-                )}
-                {hasValidBox && (
-                  <div className="flex items-center space-x-3 text-xs text-slate-300">
-                    <span>
-                      Box Size: <strong className="text-white font-mono">{params.w} × {params.h} px</strong>
-                    </span>
-                    <span className="text-slate-600">•</span>
-                    <span>
-                      Fill Threshold: <strong className="text-emerald-400 font-mono">{Math.round(params.fill_limit)} px</strong>
-                    </span>
-                  </div>
-                )}
-                {snapStatus && (
-                  <span className="text-xs text-rose-400 italic">
-                    {snapStatus}
-                  </span>
-                )}
-              </div>
-
-              <div className="text-xs text-slate-400">
-                Independent box detection and question layout will run on every scanned page during marking.
-              </div>
-            </div>
-          </div>
+              )}
+            </>
+          ) : (
+            <p className={hasValidBox ? 'text-emerald-300' : ''}>
+              {isSnapping
+                ? 'Checking the empty box…'
+                : snapStatus || 'Select an empty box to enable marking.'}
+            </p>
+          )}
+        </div>
+        {step === 'qArea' ? (
+          <button
+            onClick={() => changeStep('sampleBox')}
+            disabled={
+              isInitializingTemplate ||
+              !!templateError ||
+              !canonicalTemplateDataUrl ||
+              params.x2 <= params.x1
+            }
+            className="min-h-12 w-full sm:w-auto px-5 bg-[#8c1529] rounded-xl font-semibold disabled:opacity-40"
+          >
+            Next: Select Box
+          </button>
+        ) : (
+          <button
+            onClick={onProceedToMark}
+            disabled={
+              isInitializingTemplate ||
+              !!templateError ||
+              !canonicalTemplateDataUrl ||
+              !hasValidBox ||
+              isSnapping
+            }
+            className="min-h-12 w-full sm:w-auto px-5 bg-emerald-700 rounded-xl font-semibold disabled:opacity-40"
+          >
+            Mark Exams
+          </button>
         )}
       </div>
     </div>

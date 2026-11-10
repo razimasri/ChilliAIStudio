@@ -1,102 +1,154 @@
-import React from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Dialog } from './Dialog';
 import { AmbiguityResolutionItem } from '../types';
-
 interface AmbiguityModalProps {
   item: AmbiguityResolutionItem;
   currentIndex: number;
   totalCount: number;
   optionsCount?: number;
   onResolve: (choice: string) => void;
+  onBack?: () => void;
+  onCancel?: () => void;
 }
-
-export const AmbiguityModal: React.FC<AmbiguityModalProps> = ({
+export function AmbiguityModal({
   item,
   currentIndex,
   totalCount,
   optionsCount = 4,
   onResolve,
-}) => {
-  const choicesCount = item.choicesCount || optionsCount || 4;
-  const letters = Array.from({ length: choicesCount }, (_, i) => String.fromCharCode(65 + i));
-
-  if (!item) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[#240c10] border-2 border-[#8c1529] rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
-        {/* Header */}
-        <div className="flex items-start justify-between border-b border-[#571622] pb-3">
-          <div>
-            <div className="inline-flex items-center gap-1.5 text-xs text-amber-400 font-semibold uppercase tracking-wider mb-1">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <span>Ambiguous Mark Detected</span>
-            </div>
-            <h3 className="text-xl font-bold text-white">Clean Up Ambiguity</h3>
-            <p className="text-xs text-[#b1a1a4] mt-0.5">
-              Candidate: <span className="text-white font-semibold">{item.studentName || 'Student'}</span> • Question #{item.questionNumber}
-            </p>
-          </div>
-          <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-[#8c1529] text-white">
-            {currentIndex + 1} of {totalCount}
-          </span>
-        </div>
-
-        {/* Question Crop Snippet (1000 x 270 native crop) */}
-        <div className="bg-[#110507] border border-[#571622] rounded-xl p-3 flex flex-col items-center justify-center">
-          <p className="text-[11px] text-[#b1a1a4] mb-2 self-start font-medium">
-            Scanned Question #{item.questionNumber} Snippet:
-          </p>
-          <div className="bg-white p-2 rounded-lg shadow-inner w-full flex items-center justify-center overflow-hidden">
-            {item.cropDataUrl ? (
-              <img
-                src={item.cropDataUrl}
-                alt={`Question ${item.questionNumber} snippet`}
-                className="w-full max-h-48 object-contain rounded"
-              />
-            ) : (
-              <div className="text-xs text-gray-500 font-mono py-4">No snippet preview available</div>
-            )}
-          </div>
-        </div>
-
-        {/* Options buttons matching Gui.py */}
-        <div className="space-y-3">
-          <p className="text-xs font-semibold text-[#fbe1e5]">
-            Select the intended answer for Question #{item.questionNumber}:
-          </p>
-
-          <div
-            className="grid gap-3"
-            style={{ gridTemplateColumns: `repeat(${choicesCount}, minmax(0, 1fr))` }}
-          >
-            {letters.map((letter) => (
-              <button
-                key={letter}
-                onClick={() => onResolve(letter)}
-                className="py-3.5 rounded-xl font-bold text-xl bg-[#571622] hover:bg-[#8c1529] text-white border border-[#8c1529] shadow-md transition-all active:scale-95 cursor-pointer"
-              >
-                {letter}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            <button
-              onClick={() => onResolve('Unclear')}
-              className="py-2.5 rounded-xl font-semibold text-sm bg-[#331118] hover:bg-[#4d1620] text-amber-300 border border-[#571622] transition active:scale-95 cursor-pointer"
-            >
-              Unclear
-            </button>
-            <button
-              onClick={() => onResolve('Blank')}
-              className="py-2.5 rounded-xl font-semibold text-sm bg-[#331118] hover:bg-[#4d1620] text-[#b1a1a4] border border-[#571622] transition active:scale-95 cursor-pointer"
-            >
-              Blank (No Mark)
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+  onBack,
+  onCancel,
+}: AmbiguityModalProps) {
+  const [choice, setChoice] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  useEffect(() => {
+    setChoice(item.currentResponse || null);
+    setZoom(1);
+  }, [
+    currentIndex,
+    item.studentIndex,
+    item.questionNumber,
+    item.currentResponse,
+  ]);
+  const letters = Array.from(
+    { length: item.choicesCount || optionsCount },
+    (_, i) => String.fromCharCode(65 + i),
   );
-};
+  return (
+    <Dialog titleId="review-title" className="max-w-2xl p-4 sm:p-6 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-amber-300">
+            Answer review · {currentIndex + 1} of {totalCount}
+          </p>
+          <h2 id="review-title" className="text-xl font-bold">
+            {item.studentName} · Question {item.questionNumber}
+          </h2>
+        </div>
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="min-h-11 px-2 text-sm text-[#b1a1a4]"
+          >
+            Cancel review
+          </button>
+        )}
+      </div>
+      <p className="text-sm text-[#b1a1a4]">
+        More than one answer was detected. Select your decision, then confirm.
+        Use Unclear if the intended answer cannot be determined.
+      </p>
+      <div
+        className="flex justify-end items-center gap-2"
+        role="group"
+        aria-label="Snippet zoom"
+      >
+        <button
+          onClick={() => setZoom((z) => Math.max(1, z - 0.5))}
+          disabled={zoom === 1}
+          aria-label="Zoom snippet out"
+          className="min-w-11 min-h-11 rounded-lg bg-[#571622] disabled:opacity-40"
+        >
+          −
+        </button>
+        <span className="text-sm">{Math.round(zoom * 100)}%</span>
+        <button
+          onClick={() => setZoom((z) => Math.min(5, z + 0.5))}
+          disabled={zoom === 5}
+          aria-label="Zoom snippet in"
+          className="min-w-11 min-h-11 rounded-lg bg-[#571622] disabled:opacity-40"
+        >
+          +
+        </button>
+      </div>
+      <div
+        className="overflow-auto max-h-64 rounded-xl bg-white p-2"
+        tabIndex={0}
+        aria-label="Scanned answer snippet"
+      >
+        {item.cropDataUrl ? (
+          <img
+            src={item.cropDataUrl}
+            alt={`Question ${item.questionNumber} snippet`}
+            className="max-w-none h-auto"
+            style={{ width: `${zoom * 100}%` }}
+          />
+        ) : (
+          <p className="text-black text-sm">No snippet available.</p>
+        )}
+      </div>
+      <div
+        className="grid gap-2"
+        style={{
+          gridTemplateColumns: `repeat(${Math.min(letters.length, 5)},minmax(0,1fr))`,
+        }}
+      >
+        {letters.map((letter) => (
+          <button
+            key={letter}
+            aria-pressed={choice === letter}
+            onClick={() => setChoice(letter)}
+            className={`min-h-12 rounded-xl font-bold text-lg border ${choice === letter ? 'bg-[#8c1529] border-white' : 'bg-[#571622] border-[#8c1529]'}`}
+          >
+            {letter}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {['Unclear', 'Blank'].map((value) => (
+          <button
+            key={value}
+            aria-pressed={choice === value}
+            onClick={() => setChoice(value)}
+            className={`min-h-12 rounded-xl border text-sm ${choice === value ? 'bg-[#8c1529] border-white' : 'bg-[#18090b] border-[#571622]'}`}
+          >
+            {value === 'Blank' ? 'Blank (no mark)' : value}
+          </button>
+        ))}
+      </div>
+      <p role="status" className="text-sm text-[#b1a1a4]">
+        {choice
+          ? `Selected: ${choice}. Confirm to save this decision.`
+          : 'Choose an answer above.'}
+      </p>
+      <div className="flex justify-between gap-3">
+        <button
+          onClick={onBack}
+          disabled={!onBack || currentIndex === 0}
+          className="min-h-12 px-4 rounded-xl bg-[#571622] disabled:opacity-40"
+        >
+          Back
+        </button>
+        <button
+          disabled={!choice}
+          onClick={() => choice && onResolve(choice)}
+          className="min-h-12 px-4 rounded-xl bg-[#8c1529] font-bold disabled:opacity-40"
+        >
+          {currentIndex + 1 === totalCount
+            ? 'Confirm & finish'
+            : 'Confirm & next'}
+        </button>
+      </div>
+    </Dialog>
+  );
+}

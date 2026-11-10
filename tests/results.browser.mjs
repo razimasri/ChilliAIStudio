@@ -15,7 +15,7 @@ try {
   await page.goto(server.resolvedUrls.local[0]+'tests/fixtures/results.html');
   await page.getByRole('heading',{name:'Class Overview & Question Analysis'}).waitFor();
   await page.getByRole('heading',{name:'Score Distribution'}).waitFor();
-  assert.equal(await page.getByRole('button',{name:'Print Sheet',exact:true}).count(),0);
+  assert.equal(await page.getByRole('button',{name:'Print sheet',exact:true}).count(),0);
   assert.equal(await page.getByRole('button',{name:'Download Sheet (PNG)',exact:true}).count(),0);
   const lowest=page.locator('div.rounded-2xl').filter({has:page.locator('span',{hasText:'Lowest Score'})}).last();
   assert.match(await lowest.innerText(),/1\s*\/\s*5/);
@@ -37,10 +37,10 @@ try {
   assert.equal(await zip.file(reportFile).async('string'),reportText);
   assert.ok(Object.keys(zip.files).some(p=>p.endsWith('Question_Statistics.csv')));
   await page.screenshot({path:'/workspace/work/results-overview.png',fullPage:true});
-  await page.getByRole('button',{name:/Annotated Marked Sheets/}).click();
-  await page.getByRole('button',{name:'Print Sheet',exact:true}).waitFor();
+  await page.getByRole('tab',{name:/Annotated Marked Sheets/}).click();
+  await page.getByRole('button',{name:'Print sheet',exact:true}).waitFor();
   assert.ok((await page.locator('body').innerText()).includes('Key: A'));
-  await page.getByRole('button',{name:/Overall Statistics/}).click();
+  await page.getByRole('tab',{name:/Overall Statistics/}).click();
   await page.setViewportSize({width:390,height:844});
   await page.getByRole('heading',{name:'Score Distribution'}).waitFor();
   console.log('Results overview, complete report/item CSVs, Unicode/quote/newline names, blank/unclear counts, fifth option, ZIP contents and sheet navigation passed');
