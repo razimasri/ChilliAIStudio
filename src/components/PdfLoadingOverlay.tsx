@@ -110,7 +110,7 @@ export const PdfLoadingOverlay: React.FC<PdfLoadingOverlayProps> = ({
               ) : (
                 <>
                   <Layers className="w-6 h-6 text-[#f3b0ba] animate-bounce" />
-                  <span>Rasterizing & Scanning PDF</span>
+                  <span>Reading Document</span>
                 </>
               )}
             </div>
@@ -157,7 +157,7 @@ export const PdfLoadingOverlay: React.FC<PdfLoadingOverlayProps> = ({
               </span>
               <span className="flex items-center gap-1 text-[#f3b0ba]">
                 <Sparkles className="w-3 h-3 text-amber-400" />
-                <span>600 DPI page rendering</span>
+                <span>Full-resolution pages load when needed</span>
               </span>
             </div>
           </div>

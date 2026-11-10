@@ -6,6 +6,7 @@ import {
   StudentResult,
   QuestionStat,
 } from '../types';
+import { canvasImage, releaseImage } from './imageStore';
 import { getCV } from './cvLoader';
 import { calculateScore } from './grading';
 import { addWatermark } from './watermark';
@@ -1382,12 +1383,12 @@ export function add_markup(
  * y2 = qy + 110 + params.y1
  * unclear = student.pil_output.crop([x1, y1, x2, y2])
  */
-export function get_correction_crop(
+export async function get_correction_crop(
   cv: any,
   scanMat: any,
   question: DetectedQuestion,
   params: CalibrationParams
-): string {
+): Promise<string> {
   if (question.boxes.length === 0) return '';
   const centres = question.boxes.map((b) => b.xy);
   const qx = Math.floor((centres[0][0] + centres[centres.length - 1][0]) / 2);
@@ -1407,7 +1408,7 @@ export function get_correction_crop(
   const canvas = document.createElement('canvas');
   cv.imshow(canvas, cropRoi);
   cropRoi.delete();
-  return canvas.toDataURL('image/png');
+  try { return await canvasImage(canvas); } finally { canvas.width = 0; canvas.height = 0; }
 }
 
 /**
@@ -1455,139 +1456,151 @@ export async function processStudentScan(
     rotated.delete();
   }
 
-  onProgress?.('Cropping question area and finding boxes...');
-  const qx1 = Math.max(0, Math.min(scaledScan.cols - 50, params.x1));
-  const qy1 = Math.max(0, Math.min(scaledScan.rows - 50, params.y1));
-  const qx2 = Math.max(qx1 + 50, Math.min(scaledScan.cols, params.x2));
-  const qy2 = Math.max(qy1 + 50, Math.min(scaledScan.rows, params.y2));
+  let q_area: any = null;
+  const outputImages: string[] = [];
+  let completed = false;
+  try {
+    onProgress?.('Cropping question area and finding boxes...');
+    const qx1 = Math.max(0, Math.min(scaledScan.cols - 50, params.x1));
+    const qy1 = Math.max(0, Math.min(scaledScan.rows - 50, params.y1));
+    const qx2 = Math.max(qx1 + 50, Math.min(scaledScan.cols, params.x2));
+    const qy2 = Math.max(qy1 + 50, Math.min(scaledScan.rows, params.y2));
 
-  const qRoi = scaledScan.roi(
-    new cv.Rect(qx1, qy1, qx2 - qx1, qy2 - qy1)
-  );
-  const q_area = qRoi.clone();
-  qRoi.delete();
-
-  // Create isolated per-page parameters copy so grid math doesn't contaminate other pages
-  const pageParams: CalibrationParams = { ...params };
-
-  const rawBoxes = find_boxes(cv, q_area, pageParams);
-
-  onProgress?.('Sorting columns and rows...');
-  const { columns, filtered_boxes } = sort_into_columns(rawBoxes, pageParams);
-  sort_into_rows(filtered_boxes, pageParams);
-  missing(columns, pageParams);
-
-  onProgress?.('Constructing questions and detecting responses...');
-  const questions = find_questions(columns, pageParams);
-
-  const studentState: {
-    name: string;
-    index: number;
-    questions: DetectedQuestion[];
-    incomplete: DetectedQuestion[];
-    responses: (string | false)[];
-    score: number;
-    scan: any;
-  } = {
-    name: studentName,
-    index: studentIndex,
-    questions,
-    incomplete: [],
-    responses: [],
-    score: 0,
-    scan: scaledScan,
-  };
-
-  find_responses(cv, studentState, q_area, pageParams);
-  studentState.responses = studentState.questions.map((q) => q.response);
-  studentState.score = calculateScore(studentState.responses, pageParams.key);
-
-  // Capture clean deskewed scan for ambiguity crops before any annotations are baked
-  const cleanCanvas = document.createElement('canvas');
-  cv.imshow(cleanCanvas, scaledScan);
-  const rawDeskewedDataUrl = cleanCanvas.toDataURL('image/png');
-
-  const hasAmbiguity = studentState.incomplete.length > 0;
-
-  let annotatedDataUrl = rawDeskewedDataUrl;
-
-  // Draw final annotations after review; scoring is independent of rendering.
-  if (!hasAmbiguity) {
-    onProgress?.('Annotating scan...');
-    if (pageParams.key && Object.keys(pageParams.key).length > 0) {
-      add_markup(cv, studentState, q_area, pageParams);
-    }
-    annotate(cv, studentState, pageParams, q_area);
-
-    // Write q_area back into scaledScan: scan[y1:y2, x1:x2] = q_area
-    const destX = Math.max(0, Math.min(scaledScan.cols - 1, pageParams.x1));
-    const destY = Math.max(0, Math.min(scaledScan.rows - 1, pageParams.y1));
-    const destW = Math.min(scaledScan.cols - destX, q_area.cols);
-    const destH = Math.min(scaledScan.rows - destY, q_area.rows);
-
-    if (destW > 0 && destH > 0) {
-      const srcSub = q_area.roi(new cv.Rect(0, 0, destW, destH));
-      const destRoi = scaledScan.roi(new cv.Rect(destX, destY, destW, destH));
-      srcSub.copyTo(destRoi);
-      srcSub.delete();
-      destRoi.delete();
-    }
-
-    // Add student name on top:
-    cv.putText(
-      scaledScan,
-      studentName,
-      new cv.Point(512, 512),
-      cv.FONT_HERSHEY_DUPLEX,
-      6,
-      new cv.Scalar(255, 255, 255, 255),
-      25,
-      cv.LINE_AA
+    const qRoi = scaledScan.roi(
+      new cv.Rect(qx1, qy1, qx2 - qx1, qy2 - qy1)
     );
-    cv.putText(
-      scaledScan,
-      studentName,
-      new cv.Point(512, 512),
-      cv.FONT_HERSHEY_DUPLEX,
-      6,
-      new cv.Scalar(0, 0, 0, 255),
-      10,
-      cv.LINE_AA
-    );
+    try { q_area = qRoi.clone(); } finally { qRoi.delete(); }
 
-    await addWatermark(cv, scaledScan);
-    const markedCanvas = document.createElement('canvas');
-    cv.imshow(markedCanvas, scaledScan);
-    annotatedDataUrl = markedCanvas.toDataURL('image/png');
+    // Create isolated per-page parameters copy so grid math doesn't contaminate other pages
+    const pageParams: CalibrationParams = { ...params };
+
+    const rawBoxes = find_boxes(cv, q_area, pageParams);
+
+    onProgress?.('Sorting columns and rows...');
+    const { columns, filtered_boxes } = sort_into_columns(rawBoxes, pageParams);
+    sort_into_rows(filtered_boxes, pageParams);
+    missing(columns, pageParams);
+
+    onProgress?.('Constructing questions and detecting responses...');
+    const questions = find_questions(columns, pageParams);
+
+    const studentState: {
+      name: string;
+      index: number;
+      questions: DetectedQuestion[];
+      incomplete: DetectedQuestion[];
+      responses: (string | false)[];
+      score: number;
+      scan: any;
+    } = {
+      name: studentName,
+      index: studentIndex,
+      questions,
+      incomplete: [],
+      responses: [],
+      score: 0,
+      scan: scaledScan,
+    };
+
+    find_responses(cv, studentState, q_area, pageParams);
+    studentState.responses = studentState.questions.map((q) => q.response);
+    studentState.score = calculateScore(studentState.responses, pageParams.key);
+
+    const hasAmbiguity = studentState.incomplete.length > 0;
+    // A clean copy is only needed by pages awaiting manual review.
+    let rawDeskewedDataUrl: string | undefined;
+    if (hasAmbiguity) {
+      const cleanCanvas = document.createElement('canvas');
+      cv.imshow(cleanCanvas, scaledScan);
+      try { rawDeskewedDataUrl = await canvasImage(cleanCanvas); outputImages.push(rawDeskewedDataUrl); }
+      finally { cleanCanvas.width = 0; cleanCanvas.height = 0; }
+    }
+    let annotatedDataUrl = rawDeskewedDataUrl || '';
+
+    // Draw final annotations after review; scoring is independent of rendering.
+    if (!hasAmbiguity) {
+      onProgress?.('Annotating scan...');
+      if (pageParams.key && Object.keys(pageParams.key).length > 0) {
+        add_markup(cv, studentState, q_area, pageParams);
+      }
+      annotate(cv, studentState, pageParams, q_area);
+
+      // Write q_area back into scaledScan: scan[y1:y2, x1:x2] = q_area
+      const destX = Math.max(0, Math.min(scaledScan.cols - 1, pageParams.x1));
+      const destY = Math.max(0, Math.min(scaledScan.rows - 1, pageParams.y1));
+      const destW = Math.min(scaledScan.cols - destX, q_area.cols);
+      const destH = Math.min(scaledScan.rows - destY, q_area.rows);
+
+      if (destW > 0 && destH > 0) {
+        const srcSub = q_area.roi(new cv.Rect(0, 0, destW, destH));
+        const destRoi = scaledScan.roi(new cv.Rect(destX, destY, destW, destH));
+        srcSub.copyTo(destRoi);
+        srcSub.delete();
+        destRoi.delete();
+      }
+
+      // Add student name on top:
+      cv.putText(
+        scaledScan,
+        studentName,
+        new cv.Point(512, 512),
+        cv.FONT_HERSHEY_DUPLEX,
+        6,
+        new cv.Scalar(255, 255, 255, 255),
+        25,
+        cv.LINE_AA
+      );
+      cv.putText(
+        scaledScan,
+        studentName,
+        new cv.Point(512, 512),
+        cv.FONT_HERSHEY_DUPLEX,
+        6,
+        new cv.Scalar(0, 0, 0, 255),
+        10,
+        cv.LINE_AA
+      );
+
+      await addWatermark(cv, scaledScan);
+      const markedCanvas = document.createElement('canvas');
+      cv.imshow(markedCanvas, scaledScan);
+      try { annotatedDataUrl = await canvasImage(markedCanvas); outputImages.push(annotatedDataUrl); }
+      finally { markedCanvas.width = 0; markedCanvas.height = 0; }
+    }
+
+    const ambiguityCrops: Record<number, string> = {};
+    for (const q of studentState.incomplete) {
+      ambiguityCrops[q.number] = await get_correction_crop(cv, scaledScan, q, pageParams);
+      outputImages.push(ambiguityCrops[q.number]);
+    }
+
+
+    const total = Object.keys(params.key).length || questions.length;
+    const percentage = total > 0 ? Math.round((studentState.score / total) * 100) : 0;
+
+    completed = true;
+    return {
+      id: `student-${studentIndex}`,
+      index: studentIndex,
+      name: studentName,
+      score: studentState.score,
+      total,
+      percentage,
+      questions: studentState.questions,
+      responses: studentState.responses,
+      annotatedDataUrl,
+      originalDataUrl: scanDataUrl,
+      rawDeskewedDataUrl,
+      hasAmbiguity,
+      incomplete: studentState.incomplete,
+      ambiguityCrops,
+    };
+  } finally {
+    q_area?.delete();
+    scaledScan.delete();
+    if (!completed) outputImages.forEach(releaseImage);
   }
 
-  const ambiguityCrops: Record<number, string> = {};
-  for (const q of studentState.incomplete) {
-    ambiguityCrops[q.number] = get_correction_crop(cv, scaledScan, q, pageParams);
-  }
-
-  q_area.delete();
-  scaledScan.delete();
-
-  const total = Object.keys(params.key).length || questions.length;
-  const percentage = total > 0 ? Math.round((studentState.score / total) * 100) : 0;
-
-  return {
-    id: `student-${studentIndex}`,
-    index: studentIndex,
-    name: studentName,
-    score: studentState.score,
-    total,
-    percentage,
-    questions: studentState.questions,
-    responses: studentState.responses,
-    annotatedDataUrl,
-    originalDataUrl: scanDataUrl,
-    rawDeskewedDataUrl,
-    hasAmbiguity,
-    incomplete: studentState.incomplete,
-    ambiguityCrops,
-  };
 }
 
 /** Render from the clean registered scan using the canonical response score.
@@ -1669,7 +1682,8 @@ export async function renderStudentFinalAnnotation(
   await addWatermark(cv, scanMat);
   const canvas = document.createElement('canvas');
   cv.imshow(canvas, scanMat);
-  const finalDataUrl = canvas.toDataURL('image/png');
+  const finalDataUrl = await canvasImage(canvas);
+  canvas.width = 0; canvas.height = 0;
   scanMat.delete();
 
   return finalDataUrl;
@@ -1698,7 +1712,7 @@ export async function rotateScanImage(dataUrl: string, angleDegrees: number): Pr
   ctx.rotate((normalizedAngle * Math.PI) / 180);
   ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
 
-  return canvas.toDataURL('image/png');
+  try { return await canvasImage(canvas); } finally { canvas.width = 0; canvas.height = 0; }
 }
 
 /**

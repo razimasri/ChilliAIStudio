@@ -32,7 +32,9 @@ try {
     const before=JSON.stringify(student);
     const first=await e.renderStudentFinalAnnotation(tracked,student,params);
     const second=await e.renderStudentFinalAnnotation(tracked,student,params);
-    if(first!==second)throw new Error('Repeated final rendering changed the output pixels');
+    const firstBytes=new Uint8Array(await (await fetch(first)).arrayBuffer());
+    const secondBytes=new Uint8Array(await (await fetch(second)).arrayBuffer());
+    if(firstBytes.length!==secondBytes.length||!firstBytes.every((v,i)=>v===secondBytes[i]))throw new Error('Repeated final rendering changed the output pixels');
     if(before!==JSON.stringify(student))throw new Error('Drawing mutated student state');
     if(printed.length!==4||printed.some(text=>text!=='Score = 4 / 27'))throw new Error('Printed score disagrees: '+printed);
     // Verify the actual exported PNG contains the original printmark pixels.
@@ -66,7 +68,7 @@ try {
   const [file]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'Download Sheet (PNG)',exact:true}).last().click()]);
   assert.match(file.suggestedFilename(),/4of27/);
   const bytes=await readFile(await file.path());
-  const expected=await page.evaluate(()=>window.gradingPng.split(',')[1]);
+  const expected=await page.evaluate(async()=>{const blob=await (await fetch(window.gradingPng)).blob();return new Promise(resolve=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.readAsDataURL(blob);});});
   assert.equal(bytes.toString('base64'),expected,'Downloaded PNG differs from the verified annotation');
   const [csvFile]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:/^(Scores CSV|Class Report CSV)$/}).click()]);
   assert.ok((await readFile(await csvFile.path(),'utf8')).includes('"Tanner Moore","4"'),'Downloaded CSV must report 4');

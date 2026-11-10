@@ -14,11 +14,10 @@ try {
   for (const name of ['synthetic', 'IBSample', 'IGSample']) {
     const page = await browser.newPage();
     await page.goto(server.resolvedUrls.local[0]);
-    await page.waitForFunction(() => window.cv, null, { timeout: 120000 });
-    await page.evaluate(async () => { window.cv = await window.cv; });
     const actual = await page.evaluate(async name => {
       const engine = await import('/src/utils/omrEngine.ts');
-      const cv = window.cv;
+      const { getCV } = await import('/src/utils/cvLoader.ts');
+      const cv = await getCV();
       const canvas = document.createElement('canvas');
       let image, selection, centers;
       if (name === 'synthetic') {

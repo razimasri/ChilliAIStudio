@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Download,
   FileSpreadsheet,
@@ -18,7 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import JSZip from 'jszip';
+import { exportArchive, ArchiveEntry } from '../utils/exportArchive';
 import { StudentResult, QuestionStat } from '../types';
 import { exportStudentScoresCsv, exportQuestionStatsCsv } from '../utils/omrEngine';
 
@@ -40,6 +40,9 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isZipping, setIsZipping] = useState(false);
   const [zipProgress, setZipProgress] = useState(0);
+  const [zipError, setZipError] = useState<string | null>(null);
+  const zipController = useRef<AbortController>();
+  useEffect(() => () => zipController.current?.abort(), []);
 
   // Fire celebratory confetti on initial load
   useEffect(() => {
@@ -82,6 +85,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const handleDownloadStatsCsv = () => {
@@ -94,6 +98,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   // Download a single student's marked work
@@ -112,33 +117,25 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   const handleDownloadAllZip = async () => {
     if (students.length === 0 || isZipping) return;
     setIsZipping(true);
+    setZipError(null);
     setZipProgress(0);
 
+    const controller = new AbortController();
+    zipController.current = controller;
     try {
-      const zip = new JSZip();
-      const folder = zip.folder('ChilliMark_Annotated_Student_Sheets');
-
-      students.forEach((student, idx) => {
+      const folder = 'ChilliMark_Annotated_Student_Sheets/';
+      const entries: ArchiveEntry[] = [];
+      for (const [idx, student] of students.entries()) {
         const safeName = student.name.replace(/\s+/g, '_');
-        const rankPrefix = String(idx + 1).padStart(2, '0');
-        const fileName = `${rankPrefix}_${safeName}_Score_${student.score}of${student.total}.png`;
-        const base64Data = student.annotatedDataUrl.split(',')[1];
-        if (base64Data && folder) {
-          folder.file(fileName, base64Data, { base64: true });
-        }
-      });
-
-      // Include student scores CSV inside the ZIP package
-      const scoresCsv = exportStudentScoresCsv(students, answerKey);
-      folder?.file('Class_Scores_Summary.csv', scoresCsv);
-      folder?.file('Question_Statistics.csv', exportQuestionStatsCsv(stats));
-
-      const content = await zip.generateAsync(
-        { type: 'blob' },
-        (metadata) => {
-          setZipProgress(Math.round(metadata.percent));
-        }
-      );
+        const prefix = String(idx + 1).padStart(2, '0');
+        const response = await fetch(student.annotatedDataUrl, {signal:controller.signal});
+        if (!response.ok) throw new Error(`Could not read marked sheet for ${student.name}`);
+        entries.push({name:`${folder}${prefix}_${safeName}_Score_${student.score}of${student.total}.png`,data:await response.blob()});
+      }
+      entries.push({name:folder+'Class_Scores_Summary.csv',data:exportStudentScoresCsv(students,answerKey)});
+      entries.push({name:folder+'Question_Statistics.csv',data:exportQuestionStatsCsv(stats)});
+      const content = await exportArchive(entries, percent => setZipProgress(Math.round(percent)), controller.signal);
+      controller.signal.throwIfAborted();
 
       const url = URL.createObjectURL(content);
       const link = document.createElement('a');
@@ -149,10 +146,9 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
       document.body.removeChild(link);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
-      console.error('Failed to create ZIP package:', err);
+      if (!controller.signal.aborted) setZipError(err instanceof Error ? err.message : 'Could not create ZIP archive.');
     } finally {
-      setIsZipping(false);
-      setZipProgress(0);
+      if (!controller.signal.aborted) { setIsZipping(false); setZipProgress(0); }
     }
   };
 
@@ -204,6 +200,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      {zipError && <p role="alert" className="rounded-lg bg-red-950 p-3 text-red-200">{zipError}</p>}
       {/* Top Banner / Hero Summary */}
       <div className="bg-gradient-to-r from-[#571622] via-[#8c1529] to-[#360b13] rounded-2xl p-6 sm:p-8 text-white shadow-xl border border-[#8c1529]/60 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2">

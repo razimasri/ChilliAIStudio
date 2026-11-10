@@ -7,7 +7,9 @@ export interface ExamFile {
   id: string;
   name: string;
   size: number;
-  dataUrl: string;
+  dataUrl: string; // Display placeholder for deferred files; legacy images remain supported
+  sourceFile?: File;
+  sourceKind?: 'pdf' | 'image';
   rotation: number;
   pageIndex: number;
   totalPages: number;
