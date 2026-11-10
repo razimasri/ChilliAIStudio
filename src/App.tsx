@@ -312,6 +312,7 @@ export function App() {
           <ResultsDashboard
             students={studentResults}
             stats={examStats}
+            answerKey={getParsedKey()}
             onReset={handleReset}
           />
         )}

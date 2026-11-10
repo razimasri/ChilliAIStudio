@@ -25,15 +25,17 @@ import { exportStudentScoresCsv, exportQuestionStatsCsv } from '../utils/omrEngi
 interface ResultsDashboardProps {
   students: StudentResult[];
   stats: QuestionStat[];
+  answerKey: Record<number, string>;
   onReset: () => void;
 }
 
 export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   students,
   stats,
+  answerKey,
   onReset,
 }) => {
-  const [activeTab, setActiveTab] = useState<'sheets' | 'roster' | 'itemStats'>('sheets');
+  const [activeTab, setActiveTab] = useState<'sheets' | 'roster' | 'itemStats'>('itemStats');
   const [selectedStudentIdx, setSelectedStudentIdx] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [isZipping, setIsZipping] = useState(false);
@@ -57,20 +59,21 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
     totalStudents > 0
       ? (students.reduce((sum, s) => sum + s.score, 0) / totalStudents).toFixed(1)
       : '0';
-  const totalQuestions = currentStudent?.total || 40;
+  const totalQuestions = stats.length || Object.keys(answerKey).length || currentStudent?.total || 0;
+  const options = [...new Set(stats.flatMap(q => Object.keys(q.distribution).filter(k => /^[A-Z]$/.test(k))))].sort();
   const avgPercent =
     totalStudents > 0
       ? Math.round(students.reduce((sum, s) => sum + s.percentage, 0) / totalStudents)
       : 0;
 
   const highestScore = Math.max(...students.map((s) => s.score), 0);
-  const lowestScore = Math.min(...students.map((s) => s.score), 0);
+  const lowestScore = students.length ? Math.min(...students.map((s) => s.score)) : 0;
   const passCount = students.filter((s) => s.percentage >= 50).length;
   const passRate = totalStudents > 0 ? Math.round((passCount / totalStudents) * 100) : 0;
 
   // CSV download handlers
   const handleDownloadScoresCsv = () => {
-    const csvContent = exportStudentScoresCsv(students);
+    const csvContent = exportStudentScoresCsv(students, answerKey);
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -126,8 +129,9 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
       });
 
       // Include student scores CSV inside the ZIP package
-      const scoresCsv = exportStudentScoresCsv(students);
+      const scoresCsv = exportStudentScoresCsv(students, answerKey);
       folder?.file('Class_Scores_Summary.csv', scoresCsv);
+      folder?.file('Question_Statistics.csv', exportQuestionStatsCsv(stats));
 
       const content = await zip.generateAsync(
         { type: 'blob' },
@@ -242,7 +246,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           </button>
 
           {/* Download Current Student Sheet */}
-          {currentStudent && (
+          {activeTab === 'sheets' && currentStudent && (
             <button
               onClick={() => handleDownloadSingleSheet(currentStudent)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-[#8c1529] hover:bg-[#fde8eb] font-bold text-xs sm:text-sm shadow-md transition-transform active:scale-95 cursor-pointer"
@@ -256,10 +260,10 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           <button
             onClick={handleDownloadScoresCsv}
             className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#240c10] text-[#fbe1e5] hover:bg-[#341117] border border-[#571622] font-semibold text-xs sm:text-sm shadow-md transition-colors cursor-pointer"
-            title="Export student scores table as CSV"
+            title="Export answer key, student responses, scores, and class statistics"
           >
             <FileSpreadsheet className="w-4 h-4 text-[#f3b0ba]" />
-            <span>Scores CSV</span>
+            <span>Class Report CSV</span>
           </button>
 
           <button
@@ -271,7 +275,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             <span>Item Stats CSV</span>
           </button>
 
-          {currentStudent && (
+          {activeTab === 'sheets' && currentStudent && (
             <button
               onClick={() => handlePrintSheet(currentStudent)}
               className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#240c10] text-[#fbe1e5] hover:bg-[#341117] border border-[#571622] font-semibold text-xs sm:text-sm shadow-md transition-colors cursor-pointer"
@@ -326,7 +330,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             {highestScore} <span className="text-sm text-[#b1a1a4] font-normal">/ {totalQuestions}</span>
           </div>
           <p className="text-[11px] text-emerald-400/80 mt-1">
-            {Math.round((highestScore / totalQuestions) * 100)}% top mark
+            {totalQuestions ? Math.round((highestScore / totalQuestions) * 100) : 0}% top mark
           </p>
         </div>
 
@@ -340,7 +344,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             {lowestScore} <span className="text-sm text-[#b1a1a4] font-normal">/ {totalQuestions}</span>
           </div>
           <p className="text-[11px] text-[#8c676d] mt-1">
-            {Math.round((lowestScore / totalQuestions) * 100)}% minimum
+            {totalQuestions ? Math.round((lowestScore / totalQuestions) * 100) : 0}% minimum
           </p>
         </div>
 
@@ -355,8 +359,31 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
         </div>
       </div>
 
-      {/* Tabs Navigation */}
-      <div className="flex border-b border-[#571622] space-x-2">
+      {/* Results navigation */}
+      <div className="flex flex-wrap border-b border-[#571622] gap-2">
+        <button
+          onClick={() => setActiveTab('itemStats')}
+          className={`pb-3 px-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${
+            activeTab === 'itemStats'
+              ? 'border-[#8c1529] text-white'
+              : 'border-transparent text-[#b1a1a4] hover:text-white'
+          }`}
+        >
+          <span>📊 Overall Statistics</span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-[#571622] text-[#fbe1e5]">
+            {stats.length} Qs
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('roster')}
+          className={`pb-3 px-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${
+            activeTab === 'roster'
+              ? 'border-[#8c1529] text-white'
+              : 'border-transparent text-[#b1a1a4] hover:text-white'
+          }`}
+        >
+          <span>📋 Student Scores Roster</span>
+        </button>
         <button
           onClick={() => setActiveTab('sheets')}
           className={`pb-3 px-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${
@@ -368,31 +395,6 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           <span>📸 Annotated Marked Sheets</span>
           <span className="text-xs px-2 py-0.5 rounded-full bg-[#571622] text-[#fbe1e5]">
             {students.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('roster')}
-          className={`pb-3 px-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'roster'
-              ? 'border-[#8c1529] text-white'
-              : 'border-transparent text-[#b1a1a4] hover:text-white'
-          }`}
-        >
-          <span>📋 Student Scores Roster</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('itemStats')}
-          className={`pb-3 px-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'itemStats'
-              ? 'border-[#8c1529] text-white'
-              : 'border-transparent text-[#b1a1a4] hover:text-white'
-          }`}
-        >
-          <span>📊 Item Response Statistics</span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-[#571622] text-[#fbe1e5]">
-            {stats.length} Qs
           </span>
         </button>
       </div>
@@ -500,17 +502,18 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
               <h4 className="text-sm font-bold text-white mb-3">Item Breakdown (Response Key)</h4>
               <div className="max-h-96 overflow-y-auto pr-1 space-y-1.5 text-xs">
                 {currentStudent.questions.map((q) => {
-                  const isCorrect = q.isCorrect;
+                  const correctAnswer = answerKey[q.number] || '';
+                  const isCorrect = !!correctAnswer && q.response === correctAnswer;
                   return (
                     <div
-                      key={q.questionNumber}
+                      key={q.number + 1}
                       className={`flex items-center justify-between p-2 rounded-lg border ${
                         isCorrect
                           ? 'bg-emerald-950/20 border-emerald-900/40 text-emerald-200'
                           : 'bg-red-950/20 border-red-900/40 text-red-200'
                       }`}
                     >
-                      <span className="font-mono font-bold w-10">Q{q.questionNumber}</span>
+                      <span className="font-mono font-bold w-10">Q{q.number + 1}</span>
                       <div className="flex items-center gap-2">
                         <span>
                           Choice:{' '}
@@ -519,12 +522,12 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                               isCorrect ? 'text-emerald-400 font-mono' : 'text-red-400 font-mono'
                             }
                           >
-                            {q.finalResponse}
+                            {q.response === false ? 'Unclear' : q.response}
                           </strong>
                         </span>
                         <span className="text-[#8c676d]">•</span>
                         <span>
-                          Key: <strong className="font-mono text-white">{q.correctAnswer}</strong>
+                          Key: <strong className="font-mono text-white">{correctAnswer}</strong>
                         </span>
                       </div>
                       <span className="font-bold">{isCorrect ? '✓ 1' : '✗ 0'}</span>
@@ -716,10 +719,10 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h3 className="text-lg font-bold text-white">
-                Item Response Distribution & Difficulty Analysis
+                Class Overview & Question Analysis
               </h3>
               <p className="text-xs text-[#b1a1a4] mt-0.5">
-                Displays the proportion of candidates choosing each option (A, B, C, D) per
+                Displays the proportion of candidates choosing each option per
                 question. Highlighted rows identify questions with low correct rates.
               </p>
             </div>
@@ -732,6 +735,23 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             </button>
           </div>
 
+          <section aria-label="Class score distribution" className="rounded-xl border border-[#571622] bg-[#18090b] p-5">
+            <h4 className="font-bold text-white mb-4">Score Distribution</h4>
+            <div className="grid grid-cols-5 gap-3 items-end">
+              {[0, 20, 40, 60, 80].map(lower => {
+                const upper = lower === 80 ? 100 : lower + 19;
+                const count = students.filter(s => s.percentage >= lower && (lower === 80 ? s.percentage <= 100 : s.percentage < lower + 20)).length;
+                return <div key={lower} className="text-center space-y-2">
+                  <div className="h-28 flex items-end justify-center">
+                    <div className="bg-[#8c1529] rounded-t-md w-full max-w-20" style={{height: `${totalStudents ? count / totalStudents * 100 : 0}%`}} />
+                  </div>
+                  <div className="font-bold text-white">{count}</div>
+                  <div className="text-xs text-[#b1a1a4]">{lower}–{upper}%</div>
+                </div>;
+              })}
+            </div>
+          </section>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-[#fbe1e5]">
               <thead className="bg-[#18090b] text-[#b1a1a4] uppercase text-[11px] tracking-wider border-b border-[#571622]">
@@ -739,11 +759,9 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                   <th className="py-3 px-3">Q#</th>
                   <th className="py-3 px-3">Correct Key</th>
                   <th className="py-3 px-4">% Correct</th>
-                  <th className="py-3 px-3">% A</th>
-                  <th className="py-3 px-3">% B</th>
-                  <th className="py-3 px-3">% C</th>
-                  <th className="py-3 px-3">% D</th>
+                  {options.map(option => <th key={option} className="py-3 px-3">% {option}</th>)}
                   <th className="py-3 px-3">% Blank</th>
+                  <th className="py-3 px-3">% Unclear</th>
                   <th className="py-3 px-4">Distribution Visualizer</th>
                 </tr>
               </thead>
@@ -772,71 +790,19 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                           {q.correctPercent}%
                         </span>
                       </td>
-                      <td
-                        className={`py-2.5 px-3 ${
-                          q.correctAnswer === 'A' ? 'font-bold text-emerald-400' : 'text-[#b1a1a4]'
-                        }`}
-                      >
-                        {q.percentages.A || 0}%
-                      </td>
-                      <td
-                        className={`py-2.5 px-3 ${
-                          q.correctAnswer === 'B' ? 'font-bold text-emerald-400' : 'text-[#b1a1a4]'
-                        }`}
-                      >
-                        {q.percentages.B || 0}%
-                      </td>
-                      <td
-                        className={`py-2.5 px-3 ${
-                          q.correctAnswer === 'C' ? 'font-bold text-emerald-400' : 'text-[#b1a1a4]'
-                        }`}
-                      >
-                        {q.percentages.C || 0}%
-                      </td>
-                      <td
-                        className={`py-2.5 px-3 ${
-                          q.correctAnswer === 'D' ? 'font-bold text-emerald-400' : 'text-[#b1a1a4]'
-                        }`}
-                      >
-                        {q.percentages.D || 0}%
-                      </td>
+                      {options.map(option => <td key={option} className={`py-2.5 px-3 ${q.correctAnswer === option ? 'font-bold text-emerald-400' : 'text-[#b1a1a4]'}`}>
+                        {q.percentages[option] || 0}%
+                      </td>)}
                       <td className="py-2.5 px-3 text-[#8c676d]">{q.percentages.Blank || 0}%</td>
+                      <td className="py-2.5 px-3 text-amber-300">{q.percentages.Unclear || 0}%</td>
                       <td className="py-2.5 px-4">
                         {/* Stacked bar of options */}
                         <div className="w-36 h-3.5 bg-[#18090b] rounded-full overflow-hidden flex border border-[#571622]">
-                          <div
-                            title={`A: ${q.percentages.A || 0}%`}
-                            className={`${
-                              q.correctAnswer === 'A' ? 'bg-emerald-500' : 'bg-blue-600'
-                            }`}
-                            style={{ width: `${q.percentages.A || 0}%` }}
-                          />
-                          <div
-                            title={`B: ${q.percentages.B || 0}%`}
-                            className={`${
-                              q.correctAnswer === 'B' ? 'bg-emerald-500' : 'bg-indigo-600'
-                            }`}
-                            style={{ width: `${q.percentages.B || 0}%` }}
-                          />
-                          <div
-                            title={`C: ${q.percentages.C || 0}%`}
-                            className={`${
-                              q.correctAnswer === 'C' ? 'bg-emerald-500' : 'bg-purple-600'
-                            }`}
-                            style={{ width: `${q.percentages.C || 0}%` }}
-                          />
-                          <div
-                            title={`D: ${q.percentages.D || 0}%`}
-                            className={`${
-                              q.correctAnswer === 'D' ? 'bg-emerald-500' : 'bg-amber-600'
-                            }`}
-                            style={{ width: `${q.percentages.D || 0}%` }}
-                          />
-                          <div
-                            title={`Blank: ${q.percentages.Blank || 0}%`}
-                            className="bg-gray-700"
-                            style={{ width: `${q.percentages.Blank || 0}%` }}
-                          />
+                          {[...options, 'Blank', 'Unclear'].map((option, index) => <div
+                            key={option}
+                            title={`${option}: ${q.percentages[option] || 0}%`}
+                            style={{ width: `${q.percentages[option] || 0}%`, backgroundColor: q.correctAnswer === option ? '#10b981' : ['#2563eb','#4f46e5','#9333ea','#d97706','#db2777','#6b7280','#fbbf24'][index % 7] }}
+                          />)}
                         </div>
                       </td>
                     </tr>
