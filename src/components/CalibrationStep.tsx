@@ -514,113 +514,12 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   };
 
   return (
-    <div className="h-[calc(100dvh-4rem)] min-h-80 flex flex-col bg-[#18090b] text-[#f3e7e9]">
-      <div className="shrink-0 border-b border-[#571622] bg-[#240c10] px-4 py-2 flex flex-wrap items-center justify-between gap-2">
-        <button
-          onClick={onBack}
-          className="min-h-11 px-2 rounded-lg hover:bg-[#571622]"
-        >
-          ← Back to setup
-        </button>
-        <h2 className="font-bold text-base">
-          {step === 'qArea' ? 'Select question area' : 'Select one empty box'}
-        </h2>
-        <nav
-          aria-label="Calibration steps"
-          className="flex gap-2 w-full sm:w-auto"
-        >
-          <button
-            aria-current={step === 'qArea' ? 'step' : undefined}
-            onClick={() => changeStep('qArea')}
-            className={`min-h-11 flex-1 px-3 rounded-lg text-sm ${step === 'qArea' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
-          >
-            1. Question area
-          </button>
-          <button
-            aria-current={step === 'sampleBox' ? 'step' : undefined}
-            disabled={
-              isInitializingTemplate ||
-              !!templateError ||
-              params.x2 <= params.x1
-            }
-            onClick={() => changeStep('sampleBox')}
-            className={`min-h-11 flex-1 px-3 rounded-lg text-sm disabled:opacity-40 ${step === 'sampleBox' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
-          >
-            2. Empty box
-          </button>
-        </nav>
-      </div>
-      <div className="shrink-0 px-4 py-2 bg-[#240c10] border-b border-[#571622] space-y-2">
-        <p id="canvas-help" className="text-sm text-[#d8c7ca]">
-          {step === 'qArea'
-            ? 'Draw a rectangle around the complete answer grid, then choose Next.'
-            : 'Draw around one empty box. A little surrounding space is fine; the outline snaps to the box.'}
-        </p>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div
-            className="flex items-center gap-1"
-            role="group"
-            aria-label="Canvas tool"
-          >
-            <button
-              aria-pressed={tool === 'draw'}
-              onClick={() => setTool('draw')}
-              className={`min-h-11 px-3 rounded-lg ${tool === 'draw' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
-            >
-              Draw
-            </button>
-            <button
-              aria-pressed={tool === 'pan'}
-              onClick={() => setTool('pan')}
-              className={`min-h-11 px-3 rounded-lg ${tool === 'pan' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
-            >
-              Pan
-            </button>
-          </div>
-          <div
-            className="flex items-center gap-1"
-            role="group"
-            aria-label="Zoom"
-          >
-            <button
-              title="Zoom Out"
-              aria-label="Zoom out"
-              onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
-              className="min-h-11 min-w-11 rounded-lg bg-[#18090b]"
-            >
-              −
-            </button>
-            <span className="min-w-12 text-sm text-center">
-              {Math.round(fit * zoom * 100)}%
-            </span>
-            <button
-              title="Zoom In"
-              aria-label="Zoom in"
-              onClick={() => setZoom((z) => Math.min(32, z + 0.5))}
-              className="min-h-11 min-w-11 rounded-lg bg-[#18090b]"
-            >
-              +
-            </button>
-            <button
-              onClick={() => setZoom(1)}
-              className="min-h-11 px-3 rounded-lg bg-[#18090b]"
-            >
-              Fit
-            </button>
-            {step === 'sampleBox' && (
-              <button
-                onClick={() => changeStep('sampleBox')}
-                className="min-h-11 px-3 rounded-lg bg-[#18090b]"
-              >
-                Box view
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+    <div className="h-[calc(100dvh-4rem)] min-h-80 flex flex-col lg:flex-row lg:gap-4 lg:p-4 bg-[#18090b] text-[#f3e7e9]">
       <div
         ref={workspaceRef}
-        className="flex-1 min-h-0 overflow-auto overscroll-contain relative"
+        role="region"
+        aria-label="Scan workspace"
+        className="order-3 lg:order-1 flex-1 min-h-0 min-w-0 overflow-auto overscroll-contain relative lg:rounded-2xl lg:border lg:border-[#571622]"
         aria-busy={isInitializingTemplate || isSnapping}
       >
         {isInitializingTemplate ||
@@ -643,32 +542,35 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
           </div>
         ) : (
           <div className="min-h-full min-w-full w-max p-4 flex">
-            {step === 'qArea' && params.x2 <= params.x1 && !isDrawingQ && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                <div className="bg-[#240c10]/95 border border-[#8c1529] rounded-xl p-4 text-center shadow-xl">
-                  <svg
-                    viewBox="0 0 100 60"
-                    className="w-28 h-16 mx-auto"
-                    aria-hidden="true"
-                  >
-                    <rect
-                      x="8"
-                      y="8"
-                      width="84"
-                      height="44"
-                      rx="4"
-                      fill="none"
-                      stroke="#f3b0ba"
-                      strokeWidth="3"
-                      strokeDasharray="12 5"
-                      className="selection-demo"
-                    />
-                    <circle cx="92" cy="52" r="5" fill="#f3b0ba" />
-                  </svg>
-                  <p className="text-sm">Drag to frame the answer grid</p>
+            {step === 'qArea' &&
+              params.x2 <= params.x1 &&
+              !isDrawingQ &&
+              tool === 'draw' && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 lg:hidden">
+                  <div className="bg-[#240c10]/95 border border-[#8c1529] rounded-xl p-4 text-center shadow-xl">
+                    <svg
+                      viewBox="0 0 100 60"
+                      className="w-28 h-16 mx-auto"
+                      aria-hidden="true"
+                    >
+                      <rect
+                        x="8"
+                        y="8"
+                        width="84"
+                        height="44"
+                        rx="4"
+                        fill="none"
+                        stroke="#f3b0ba"
+                        strokeWidth="3"
+                        strokeDasharray="12 5"
+                        className="selection-demo"
+                      />
+                      <circle cx="92" cy="52" r="5" fill="#f3b0ba" />
+                    </svg>
+                    <p className="text-sm">Drag to frame the answer grid</p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             <div
               className="shrink-0 m-auto shadow-xl"
               style={{
@@ -707,64 +609,211 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
           </div>
         )}
       </div>
-      <div className="shrink-0 border-t border-[#571622] bg-[#240c10] px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex flex-wrap items-center justify-between gap-2">
-        <div role="status" className="text-sm min-w-0">
-          {step === 'qArea' ? (
-            <>
-              <p>
-                {params.x2 > params.x1
-                  ? 'Question area selected. Review it, then continue.'
-                  : 'Use Draw to select the answer grid. Use Pan to move a zoomed page.'}
-              </p>
-              {params.x2 > params.x1 && (
-                <button
-                  onClick={() => {
-                    setHasValidBox(false);
-                    onParamsChange({ ...params, x1: 0, y1: 0, x2: 0, y2: 0 });
-                  }}
-                  className="min-h-11 text-rose-300"
-                >
-                  Clear selection
-                </button>
-              )}
-            </>
-          ) : (
-            <p className={hasValidBox ? 'text-emerald-300' : ''}>
-              {isSnapping
-                ? 'Checking the empty box…'
-                : snapStatus || 'Select an empty box to enable marking.'}
+      <aside
+        aria-label="Calibration controls"
+        className="contents lg:flex lg:order-2 lg:w-[22rem] xl:w-[24rem] lg:shrink-0 lg:min-h-0 lg:flex-col lg:overflow-hidden lg:rounded-2xl lg:border lg:border-[#571622] lg:bg-[#240c10]"
+      >
+        <div className="contents lg:block lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
+          <div className="order-1 shrink-0 border-b border-[#571622] bg-[#240c10] px-4 py-2 flex flex-wrap items-center justify-between gap-2 lg:flex-col lg:items-stretch lg:p-4 lg:gap-2">
+            <button
+              onClick={onBack}
+              className="min-h-11 px-2 rounded-lg hover:bg-[#571622]"
+            >
+              ← Back to setup
+            </button>
+            <h2 className="font-bold text-base lg:text-xl">
+              {step === 'qArea'
+                ? 'Select question area'
+                : 'Select one empty box'}
+            </h2>
+            <p
+              className="hidden lg:block text-sm text-[#b1a1a4] truncate"
+              title={firstFile.name}
+            >
+              {firstFile.name}
             </p>
+            <nav
+              aria-label="Calibration steps"
+              className="flex gap-2 w-full sm:w-auto lg:w-full"
+            >
+              <button
+                aria-current={step === 'qArea' ? 'step' : undefined}
+                onClick={() => changeStep('qArea')}
+                className={`min-h-11 flex-1 px-3 rounded-lg text-sm ${step === 'qArea' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
+              >
+                1. Question area
+              </button>
+              <button
+                aria-current={step === 'sampleBox' ? 'step' : undefined}
+                disabled={
+                  isInitializingTemplate ||
+                  !!templateError ||
+                  params.x2 <= params.x1
+                }
+                onClick={() => changeStep('sampleBox')}
+                className={`min-h-11 flex-1 px-3 rounded-lg text-sm disabled:opacity-40 ${step === 'sampleBox' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
+              >
+                2. Empty box
+              </button>
+            </nav>
+          </div>
+          <div className="order-2 shrink-0 px-4 py-2 bg-[#240c10] border-b border-[#571622] space-y-2 lg:p-4 lg:space-y-3 lg:border-b-0">
+            <p
+              id="canvas-help"
+              className={`text-sm text-[#d8c7ca] relative ${step === 'qArea' && params.x2 <= params.x1 && tool === 'draw' ? 'lg:pl-16' : ''}`}
+            >
+              {step === 'qArea' &&
+                params.x2 <= params.x1 &&
+                tool === 'draw' && (
+                  <svg
+                    viewBox="0 0 100 60"
+                    className="hidden lg:block absolute left-0 top-1 w-12 h-9"
+                    aria-hidden="true"
+                  >
+                    <rect
+                      x="8"
+                      y="8"
+                      width="84"
+                      height="44"
+                      rx="4"
+                      fill="none"
+                      stroke="#f3b0ba"
+                      strokeWidth="3"
+                      strokeDasharray="12 5"
+                      className="selection-demo"
+                    />
+                    <circle cx="92" cy="52" r="5" fill="#f3b0ba" />
+                  </svg>
+                )}
+              {step === 'qArea'
+                ? 'Draw a rectangle around the complete answer grid, then choose Next.'
+                : 'Draw around one empty box. A little surrounding space is fine; the outline snaps to the box.'}
+            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 lg:flex-col lg:items-stretch lg:gap-2">
+              <div
+                className="flex items-center gap-1"
+                role="group"
+                aria-label="Canvas tool"
+              >
+                <button
+                  aria-pressed={tool === 'draw'}
+                  onClick={() => setTool('draw')}
+                  className={`min-h-11 px-3 rounded-lg ${tool === 'draw' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
+                >
+                  Draw
+                </button>
+                <button
+                  aria-pressed={tool === 'pan'}
+                  onClick={() => setTool('pan')}
+                  className={`min-h-11 px-3 rounded-lg ${tool === 'pan' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
+                >
+                  Pan
+                </button>
+              </div>
+              <div
+                className="flex items-center gap-1"
+                role="group"
+                aria-label="Zoom"
+              >
+                <button
+                  title="Zoom Out"
+                  aria-label="Zoom out"
+                  onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
+                  className="min-h-11 min-w-11 rounded-lg bg-[#18090b]"
+                >
+                  −
+                </button>
+                <span className="min-w-12 text-sm text-center">
+                  {Math.round(fit * zoom * 100)}%
+                </span>
+                <button
+                  title="Zoom In"
+                  aria-label="Zoom in"
+                  onClick={() => setZoom((z) => Math.min(32, z + 0.5))}
+                  className="min-h-11 min-w-11 rounded-lg bg-[#18090b]"
+                >
+                  +
+                </button>
+                <button
+                  onClick={() => setZoom(1)}
+                  className="min-h-11 px-3 rounded-lg bg-[#18090b]"
+                >
+                  Fit
+                </button>
+                {step === 'sampleBox' && (
+                  <button
+                    onClick={() => changeStep('sampleBox')}
+                    className="min-h-11 px-3 rounded-lg bg-[#18090b]"
+                  >
+                    Box view
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="order-4 shrink-0 border-t border-[#571622] bg-[#240c10] px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex flex-wrap items-center justify-between gap-2 lg:block lg:space-y-3 lg:p-4">
+          <div
+            role="status"
+            className="text-sm min-w-0 lg:flex lg:items-center lg:gap-3"
+          >
+            {step === 'qArea' ? (
+              <>
+                <p>
+                  {params.x2 > params.x1
+                    ? 'Area selected. Review, then continue.'
+                    : 'Draw around the grid. Use Pan to move a zoomed page.'}
+                </p>
+                {params.x2 > params.x1 && (
+                  <button
+                    onClick={() => {
+                      setHasValidBox(false);
+                      onParamsChange({ ...params, x1: 0, y1: 0, x2: 0, y2: 0 });
+                    }}
+                    className="min-h-11 text-rose-300 lg:shrink-0"
+                  >
+                    Clear selection
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className={hasValidBox ? 'text-emerald-300' : ''}>
+                {isSnapping
+                  ? 'Checking the empty box…'
+                  : snapStatus || 'Select an empty box to enable marking.'}
+              </p>
+            )}
+          </div>
+          {step === 'qArea' ? (
+            <button
+              onClick={() => changeStep('sampleBox')}
+              disabled={
+                isInitializingTemplate ||
+                !!templateError ||
+                !canonicalTemplateDataUrl ||
+                params.x2 <= params.x1
+              }
+              className="min-h-12 w-full sm:w-auto lg:w-full px-5 bg-[#8c1529] rounded-xl font-semibold disabled:opacity-40"
+            >
+              Next: Select Box
+            </button>
+          ) : (
+            <button
+              onClick={onProceedToMark}
+              disabled={
+                isInitializingTemplate ||
+                !!templateError ||
+                !canonicalTemplateDataUrl ||
+                !hasValidBox ||
+                isSnapping
+              }
+              className="min-h-12 w-full sm:w-auto lg:w-full px-5 bg-emerald-700 rounded-xl font-semibold disabled:opacity-40"
+            >
+              Mark Exams
+            </button>
           )}
         </div>
-        {step === 'qArea' ? (
-          <button
-            onClick={() => changeStep('sampleBox')}
-            disabled={
-              isInitializingTemplate ||
-              !!templateError ||
-              !canonicalTemplateDataUrl ||
-              params.x2 <= params.x1
-            }
-            className="min-h-12 w-full sm:w-auto px-5 bg-[#8c1529] rounded-xl font-semibold disabled:opacity-40"
-          >
-            Next: Select Box
-          </button>
-        ) : (
-          <button
-            onClick={onProceedToMark}
-            disabled={
-              isInitializingTemplate ||
-              !!templateError ||
-              !canonicalTemplateDataUrl ||
-              !hasValidBox ||
-              isSnapping
-            }
-            className="min-h-12 w-full sm:w-auto px-5 bg-emerald-700 rounded-xl font-semibold disabled:opacity-40"
-          >
-            Mark Exams
-          </button>
-        )}
-      </div>
+      </aside>
     </div>
   );
 };
