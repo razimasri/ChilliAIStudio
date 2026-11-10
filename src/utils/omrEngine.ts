@@ -921,138 +921,71 @@ export function sort_into_rows(boxes: [number, number][], params: CalibrationPar
     row_avg.push(Math.floor(avg));
   }
 
-  // Calculate gaps to find median y_jump
+  // Use only observed rows, as in Python. Interpolating across gaps here
+  // creates extra question numbers before missing boxes are reconstructed.
+  params.row_avg = row_avg;
   if (row_avg.length > 1) {
-    const gaps: number[] = [];
-    for (let i = 0; i < row_avg.length - 1; i++) {
-      gaps.push(row_avg[i + 1] - row_avg[i]);
-    }
-    gaps.sort((a, b) => a - b);
-    const n = gaps.length;
-    params.y_jump =
-      n === 0
-        ? 0
-        : n % 2 === 1
-        ? gaps[Math.floor(n / 2)]
-        : Math.floor((gaps[Math.floor(n / 2) - 1] + gaps[Math.floor(n / 2)]) / 2);
+    const gaps = row_avg.slice(1).map((y, i) => y - row_avg[i]).sort((a, b) => a - b);
+    const mid = Math.floor(gaps.length / 2);
+    params.y_jump = gaps.length % 2
+      ? gaps[mid]
+      : Math.trunc((gaps[mid - 1] + gaps[mid]) / 2);
   } else {
-    params.y_jump = params.y_jump || 0;
-  }
-
-  // If there are gaps in row_avg greater than 1.6 * y_jump, interpolate missing rows
-  if (params.y_jump > 0 && row_avg.length > 1) {
-    const filled_row_avg: number[] = [row_avg[0]];
-    for (let i = 1; i < row_avg.length; i++) {
-      const prevY = filled_row_avg[filled_row_avg.length - 1];
-      const currY = row_avg[i];
-      const gap = currY - prevY;
-      const numSteps = Math.round(gap / params.y_jump);
-      if (numSteps > 1 && numSteps <= 5) {
-        const stepSize = gap / numSteps;
-        for (let s = 1; s < numSteps; s++) {
-          filled_row_avg.push(Math.floor(prevY + s * stepSize));
-        }
-      }
-      filled_row_avg.push(currY);
-    }
-    params.row_avg = filled_row_avg;
-  } else {
-    params.row_avg = row_avg;
+    params.y_jump = 0;
   }
 }
 
 /**
- * Python Source:
- * def missing(columns, params, img):
- *   Aligns detected boxes in each column 1-to-1 against expected row positions.
- *   Inserts placeholders for missing/filled boxes and drops stray noise so all
- *   columns have identical row count and accurate question-to-row mapping.
+ * Reconstruct columns against Python's global row positions. Keep its 30px
+ * noise boundary and 10px snapping deadband, with a half-row guard for closely
+ * spaced rows. Rebuild rather than mutating an enumerated list: Python's pop /
+ * insert loop can skip boxes, and its reverse tail append can reorder answers.
  */
 export function missing(
   columns: [number, number][][],
   params: CalibrationParams
 ): [number, number][][] {
-  if (!params.row_avg || params.row_avg.length === 0 || !params.col_avg) {
+  const rows = params.row_avg;
+  if (!rows?.length) {
+    if (columns.some(column => column.length)) {
+      throw new Error('No consistent question rows detected. Check the question region and sample box.');
+    }
     return columns;
   }
+  if (!params.col_avg) throw new Error('Missing column geometry for row reconstruction.');
+  const jump = params.y_jump || 0;
+  const tolerance = jump > 0 ? Math.min(30, jump * 0.45) : params.h;
 
-  const choices = params.choices || 4;
-  const numBlocks = Math.max(1, Math.floor(columns.length / choices));
-  const yJump = params.y_jump || (params.h ? params.h * 2.5 : 100);
-  const tol = Math.min(yJump * 0.45, Math.max(params.h * 0.85, 45));
-
-  for (let b = 0; b < numBlocks; b++) {
-    const startCol = b * choices;
-    const endCol = Math.min(columns.length, startCol + choices);
-    const blockColumns = columns.slice(startCol, endCol);
-
-    // Find Y-bounds of detected boxes in this block
-    const allBlockBoxes = blockColumns.flat();
-    if (allBlockBoxes.length === 0) continue;
-
-    let bMinY = Infinity;
-    let bMaxY = -Infinity;
-    for (const pt of allBlockBoxes) {
-      if (pt[1] < bMinY) bMinY = pt[1];
-      if (pt[1] > bMaxY) bMaxY = pt[1];
-    }
-
-    // Determine the rows in params.row_avg that fall within this block's Y-extent
-    const blockRows = params.row_avg.filter(
-      (y) => y >= bMinY - tol && y <= bMaxY + tol
-    );
-
-    const rowsToUse = blockRows.length >= 5 ? blockRows : params.row_avg;
-
-    // Per-block Y adjustment: compute median offset of detected boxes in this block from blockRows
-    const offsets: number[] = [];
-    for (const col of blockColumns) {
-      for (const box of col) {
-        for (const rY of rowsToUse) {
-          if (Math.abs(box[1] - rY) <= tol) {
-            offsets.push(box[1] - rY);
-            break;
-          }
+  for (let c = 0; c < columns.length; c++) {
+    const detected = columns[c];
+    const colX = params.col_avg[c];
+    if (colX === undefined) throw new Error('Missing column geometry for row reconstruction.');
+    const used = new Set<number>();
+    const reconstructed: [number, number][] = [];
+    for (const expectedY of rows) {
+      let best = -1;
+      let distance = Infinity;
+      for (let i = 0; i < detected.length; i++) {
+        if (used.has(i)) continue;
+        const delta = Math.abs(detected[i][1] - expectedY);
+        if (delta <= tolerance && delta < distance) {
+          best = i;
+          distance = delta;
         }
       }
-    }
-    offsets.sort((a, b) => a - b);
-    const medianOffset = offsets.length > 0 ? offsets[Math.floor(offsets.length / 2)] : 0;
-
-    for (let c = startCol; c < endCol; c++) {
-      const colBoxes = columns[c] || [];
-      const colX = params.col_avg[c] !== undefined ? params.col_avg[c] : (colBoxes[0]?.[0] ?? 0);
-      const alignedColumn: [number, number][] = [];
-      const usedBoxIndices = new Set<number>();
-
-      for (let r = 0; r < rowsToUse.length; r++) {
-        const targetY = rowsToUse[r] + medianOffset;
-
-        let bestIdx = -1;
-        let bestDist = Infinity;
-        for (let i = 0; i < colBoxes.length; i++) {
-          if (usedBoxIndices.has(i)) continue;
-          const dist = Math.abs(colBoxes[i][1] - targetY);
-          if (dist < bestDist) {
-            bestDist = dist;
-            bestIdx = i;
-          }
-        }
-
-        if (bestIdx !== -1 && bestDist <= tol) {
-          usedBoxIndices.add(bestIdx);
-          // Preserve authentic detected contour center coordinates
-          alignedColumn.push([colBoxes[bestIdx][0], colBoxes[bestIdx][1]]);
-        } else {
-          // Interpolate placeholder for missing/filled box
-          alignedColumn.push([colX, targetY]);
-        }
+      if (best >= 0) {
+        used.add(best);
+        const [x, y] = detected[best];
+        reconstructed.push([x, jump > 0 && distance > 10 ? expectedY : y]);
+      } else {
+        // Python uses the next detected box's x for an interior insertion,
+        // and the column average only when extending the tail.
+        const next = detected.find((point, i) => !used.has(i) && point[1] > expectedY + tolerance);
+        reconstructed.push([next ? next[0] : colX, expectedY]);
       }
-
-      columns[c] = alignedColumn;
     }
+    columns[c] = reconstructed;
   }
-
   return columns;
 }
 
