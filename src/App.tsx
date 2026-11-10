@@ -13,15 +13,14 @@ import {
   AmbiguityResolutionItem,
   QuestionStat,
 } from './types';
-import { getExamPage, releaseUnusedSources } from './utils/pdfProcessor';
+import { releaseUnusedSources } from './utils/pdfProcessor';
 import { releaseAllImages, releaseImage, releaseResultImages } from './utils/imageStore';
-import { getCV } from './utils/cvLoader';
+import { markBatch } from './utils/markingBatch';
+import { MarkingClient } from './utils/markingClient';
 import { gradeStudent, resolveStudentResponse } from './utils/grading';
 import {
-  processStudentScan,
   calculateQuestionStats,
   decodeCVError,
-  renderStudentFinalAnnotation,
 } from './utils/omrEngine';
 
 export function App() {
@@ -65,7 +64,7 @@ export function App() {
   }, []);
 
   // Marking state
-  const [markingIndex, setMarkingIndex] = useState<number>(0);
+  const [markingPages, setMarkingPages] = useState<{active:number[];done:number[]}>({active:[],done:[]});
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [markingStatusText, setMarkingStatusText] = useState<string>('');
   const [pageErrors, setPageErrors] = useState<string[]>([]);
@@ -102,8 +101,10 @@ export function App() {
     batchController.current?.abort();
     const controller = new AbortController();
     batchController.current = controller;
+    releaseResultImages(studentResults);
+    setStudentResults([]);
     setCurrentStep(3);
-    setMarkingIndex(0);
+    setMarkingPages({active:[],done:[]});
     setProgressPercent(0);
     setPageErrors([]);
     setMarkingStatusText('Initializing OMR heuristic engine...');
@@ -120,62 +121,27 @@ export function App() {
     };
 
     try {
-      const cv = await getCV();
-
-      for (let i = 0; i < files.length; i++) {
-        setMarkingIndex(i);
-        const studentName = names[i] || `Student ${String(i + 1).padStart(2, '0')}`;
-        setProgressPercent(Math.round(((i + 0.1) / files.length) * 100));
-
-        if (controller.signal.aborted) return;
-        setMarkingStatusText(`Preparing page ${i + 1} at 600 DPI...`);
-        // Source loading errors halt the batch rather than becoming blank answers.
-        const raster = await getExamPage(files[i], undefined, controller.signal);
-        const scanUrl = raster.url;
-        setMarkingStatusText(`Marking page ${i + 1} (${studentName})...`);
-
-        try {
-          const res = await processStudentScan(
-            cv,
-            scanUrl,
-            studentName,
-            i,
-            activeParams,
-            (stepMsg) => setMarkingStatusText(`Page ${i + 1} (${studentName}): ${stepMsg}`)
-          );
-          if (controller.signal.aborted) { releaseResultImages([res]); return; }
-          // Full input rasters are temporary; keep only the lightweight source preview.
-          res.originalDataUrl = files[i].dataUrl;
-          results.push(res);
-
-          if (res.hasAmbiguity && res.incomplete.length > 0) {
-            for (const q of res.incomplete) {
-              const cropUrl =
-                res.ambiguityCrops?.[q.number] ||
-                res.rawDeskewedDataUrl ||
-                res.annotatedDataUrl;
-              ambiguities.push({
-                studentIndex: i,
-                studentName,
-                questionNumber: q.number + 1,
-                cropDataUrl: cropUrl,
-                currentResponse: false,
-                detectedLetters: q.boxes.filter((b) => b.bool).map((b) => b.letter),
-                choicesCount: activeParams.choices || 4,
-              });
-            }
+      const marked = await markBatch(files, names, activeParams, controller.signal, progress => {
+        setMarkingPages({active:progress.active,done:progress.done});
+        setProgressPercent(Math.round(progress.completed / files.length * 100));
+        setMarkingStatusText(`${progress.workers} background worker${progress.workers === 1 ? '' : 's'} · ${progress.message}`);
+      });
+      results.push(...marked);
+      controller.signal.throwIfAborted();
+      for (const res of results) {
+        if (res.hasAmbiguity && res.incomplete.length > 0) {
+          for (const q of res.incomplete) {
+            ambiguities.push({
+              studentIndex: res.index,
+              studentName: res.name,
+              questionNumber: q.number + 1,
+              cropDataUrl: res.ambiguityCrops?.[q.number] || res.rawDeskewedDataUrl || res.annotatedDataUrl,
+              currentResponse: false,
+              detectedLetters: q.boxes.filter(b => b.bool).map(b => b.letter),
+              choicesCount: activeParams.choices || 4,
+            });
           }
-
-          // Yield to event loop to allow UI updates and memory reclamation
-          await new Promise((r) => setTimeout(r, 20));
-        } catch (pageErr) {
-          if (controller.signal.aborted) return;
-          throw new Error(`Page ${i + 1} (${studentName}) error: ${decodeCVError(cv, pageErr)}`);
-        } finally {
-          raster.release();
         }
-
-        setProgressPercent(Math.round(((i + 1) / files.length) * 100));
       }
 
       setStudentResults(results);
@@ -226,24 +192,32 @@ export function App() {
       setCurrentAmbiguityIdx((prev) => prev + 1);
     } else {
       setAmbiguityQueue([]);
-      // Only corrected students need new annotation images.
+      // Final corrected sheets also render off the interface thread.
+      let client: MarkingClient | undefined;
+      const signal = batchController.current?.signal;
+      const cancel = () => client?.dispose();
       try {
-        const cv = await getCV();
+        signal?.throwIfAborted();
+        client = new MarkingClient();
+        signal?.addEventListener('abort', cancel, {once:true});
         const corrected = new Set(ambiguityQueue.map(item => item.studentIndex));
         for (const i of corrected) {
           const student = updatedResults[i];
           if (student.rawDeskewedDataUrl) {
+            setMarkingStatusText(`Preparing corrected sheet for ${student.name}…`);
             const oldImage = student.annotatedDataUrl;
-            student.annotatedDataUrl = await renderStudentFinalAnnotation(
-              cv,
-              student,
-              { ...params, key }
-            );
+            student.annotatedDataUrl = await client.annotate(student, { ...params, key });
+            signal?.throwIfAborted();
             if (oldImage !== student.rawDeskewedDataUrl) releaseImage(oldImage);
           }
         }
-      } catch (annoErr) {
-        console.error('Error rendering final annotations:', annoErr);
+      } catch (error) {
+        if (signal?.aborted) return;
+        setPageErrors(previous => [...previous, `Could not prepare corrected sheets: ${error instanceof Error ? error.message : String(error)}`]);
+        return;
+      } finally {
+        signal?.removeEventListener('abort', cancel);
+        client?.dispose();
       }
       finishMarking(updatedResults, { ...params, key });
     }
@@ -267,7 +241,7 @@ export function App() {
     setStudentResults([]);
     setAmbiguityQueue([]);
     setExamStats([]);
-    setMarkingIndex(0);
+    setMarkingPages({active:[],done:[]});
     setProgressPercent(0);
   };
 
@@ -277,10 +251,6 @@ export function App() {
     newFiles[0] = updated;
     setFiles(newFiles);
   };
-
-  const candidateNames = getCandidateNames();
-  const currentMarkingName =
-    candidateNames[markingIndex] || `Student ${String(markingIndex + 1).padStart(2, '0')}`;
 
   return (
     <div className="min-h-screen bg-[#18090b] text-[#f3e7e9] flex flex-col selection:bg-[#8c1529] selection:text-white">
@@ -317,8 +287,8 @@ export function App() {
         {currentStep === 3 && (
           <MarkingAnimationStep
             files={files}
-            currentIndex={markingIndex}
-            currentStudentName={currentMarkingName}
+            activePages={markingPages.active}
+            completedPages={markingPages.done}
             progressPercent={progressPercent}
             statusText={markingStatusText}
             pageErrors={pageErrors}

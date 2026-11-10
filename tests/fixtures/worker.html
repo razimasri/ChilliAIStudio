@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Marking worker regression</title>
+  </head>
+  <body>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { MarkingAnimationStep } from "/src/components/MarkingAnimationStep.tsx";
+      import * as engine from "/src/utils/omrEngine.ts";
+      import { resolveStudentResponse } from "/src/utils/grading.ts";
+      import { getCV } from "/src/utils/cvLoader.ts";
+      import { MarkingClient } from "/src/utils/markingClient.ts";
+      import {
+        markBatch,
+        markingWorkerCount,
+      } from "/src/utils/markingBatch.ts";
+      import { releaseAllImages } from "/src/utils/imageStore.ts";
+      window.showWorkerProgress = () => {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        createRoot(root).render(
+          React.createElement(MarkingAnimationStep, {
+            files: Array.from({ length: 3 }, (_, i) => ({
+              id: String(i),
+              dataUrl:
+                'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg"/%3E',
+            })),
+            activePages: [0, 2],
+            completedPages: [1],
+            progressPercent: 33,
+            onBack: () => {
+              window.progressCancelled = true;
+            },
+          }),
+        );
+      };
+      window.workerFixture = {
+        engine,
+        getCV,
+        MarkingClient,
+        markBatch,
+        markingWorkerCount,
+        releaseAllImages,
+        resolveStudentResponse,
+      };
+    </script>
+  </body>
+</html>

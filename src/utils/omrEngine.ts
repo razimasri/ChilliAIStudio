@@ -7,6 +7,7 @@ import {
   QuestionStat,
 } from '../types';
 import { canvasImage, releaseImage } from './imageStore';
+import { createRasterCanvas, rasterContext, readRaster, drawMat } from './rasterIO';
 import { getCV } from './cvLoader';
 import { calculateScore } from './grading';
 import { addWatermark } from './watermark';
@@ -29,16 +30,15 @@ export function loadImageElement(dataUrl: string): Promise<HTMLImageElement> {
  * Decode a scan without changing its dimensions or orientation.
  */
 export async function renderScanMat(cv: any, dataUrl: string): Promise<any> {
-  const img = await loadImageElement(dataUrl);
-  const canvas = document.createElement('canvas');
-  canvas.width = img.naturalWidth;
-  canvas.height = img.naturalHeight;
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(img, 0, 0);
-  const mat = cv.matFromImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
-  canvas.width = 0;
-  canvas.height = 0;
-  return mat;
+  const raster = await readRaster(dataUrl);
+  const canvas = createRasterCanvas(raster.width, raster.height);
+  try {
+    const ctx = rasterContext(canvas);
+    ctx.drawImage(raster.image, 0, 0);
+    return cv.matFromImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
+  } finally {
+    raster.release(); canvas.width = 0; canvas.height = 0;
+  }
 }
 
 /** Resize only the first-page calibration template, as in Python load_inputs. */
@@ -1405,8 +1405,8 @@ export async function get_correction_crop(
   const y2 = Math.min(scanMat.rows, qy + 110 + params.y1);
 
   const cropRoi = scanMat.roi(new cv.Rect(x1, y1, x2 - x1, y2 - y1));
-  const canvas = document.createElement('canvas');
-  cv.imshow(canvas, cropRoi);
+  const canvas = createRasterCanvas();
+  drawMat(cv, canvas, cropRoi);
   cropRoi.delete();
   try { return await canvasImage(canvas); } finally { canvas.width = 0; canvas.height = 0; }
 }
@@ -1510,8 +1510,8 @@ export async function processStudentScan(
     // A clean copy is only needed by pages awaiting manual review.
     let rawDeskewedDataUrl: string | undefined;
     if (hasAmbiguity) {
-      const cleanCanvas = document.createElement('canvas');
-      cv.imshow(cleanCanvas, scaledScan);
+      const cleanCanvas = createRasterCanvas();
+      drawMat(cv, cleanCanvas, scaledScan);
       try { rawDeskewedDataUrl = await canvasImage(cleanCanvas); outputImages.push(rawDeskewedDataUrl); }
       finally { cleanCanvas.width = 0; cleanCanvas.height = 0; }
     }
@@ -1562,8 +1562,8 @@ export async function processStudentScan(
       );
 
       await addWatermark(cv, scaledScan);
-      const markedCanvas = document.createElement('canvas');
-      cv.imshow(markedCanvas, scaledScan);
+      const markedCanvas = createRasterCanvas();
+      drawMat(cv, markedCanvas, scaledScan);
       try { annotatedDataUrl = await canvasImage(markedCanvas); outputImages.push(annotatedDataUrl); }
       finally { markedCanvas.width = 0; markedCanvas.height = 0; }
     }
@@ -1680,8 +1680,8 @@ export async function renderStudentFinalAnnotation(
   );
 
   await addWatermark(cv, scanMat);
-  const canvas = document.createElement('canvas');
-  cv.imshow(canvas, scanMat);
+  const canvas = createRasterCanvas();
+  drawMat(cv, canvas, scanMat);
   const finalDataUrl = await canvasImage(canvas);
   canvas.width = 0; canvas.height = 0;
   scanMat.delete();
@@ -1697,8 +1697,8 @@ export async function rotateScanImage(dataUrl: string, angleDegrees: number): Pr
   if (normalizedAngle === 0) return dataUrl;
 
   const img = await loadImageElement(dataUrl);
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d')!;
+  const canvas = createRasterCanvas();
+  const ctx = rasterContext(canvas);
 
   if (normalizedAngle === 90 || normalizedAngle === 270) {
     canvas.width = img.naturalHeight;

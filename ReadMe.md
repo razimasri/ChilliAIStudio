@@ -170,9 +170,10 @@ PNG output uses asynchronous Blob encoding rather than retained base64 strings.
 Only ambiguous pages retain a clean registered raster for final correction
 rendering, and only corrected students are rendered again after review. ZIP
 assembly runs in one disposable worker per export; leaving results cancels it.
-OpenCV initializes once, on demand, using the same npm runtime as before. PDF.js
+OpenCV initializes on demand using the same npm runtime as before. PDF.js
 already parses documents in its own worker. MCQ detection, thresholds, row logic,
-response reading and scoring are unchanged and still run on the main thread.
+response reading and scoring are unchanged; marking runs in the background as
+described below.
 
 A local Chromium comparison on the 14-page IGCSE sample measured metadata load
 at approximately 0.5–1.7 seconds, compared with 24 seconds for the previous eager
@@ -189,3 +190,38 @@ queue priority, cancellation, URL cleanup, and the actual upload/rotate/remove/
 clear workflow. Existing geometry, calibration, grading, branding and export
 regressions remain applicable. Rendering/recognition errors halt marking for
 review instead of producing a fabricated zero score.
+
+
+## Background marking and bounded parallelism
+
+Marking and final correction rendering run in dedicated module workers using the
+same engine functions and OpenCV version. The canvas boundary supports
+OffscreenCanvas; scan pixels, thresholding, grouping, response reading, scoring,
+annotation commands and watermark placement keep their existing behavior.
+
+Up to two pages run concurrently when the browser reports at least 8 GiB device
+memory and four logical processors. Lower or unknown memory/core information
+uses one background marking worker. One-page batches use one worker. This is a
+conservative cap: each worker owns an independent OpenCV/WASM heap plus large
+600-DPI image buffers, so increasing workers can exhaust memory or slow devices.
+Calibration remains on the interface thread. Full PDF rasterization remains
+serial, and supplies only the next input for each available marking worker.
+
+Results and review prompts keep input/student order even when pages finish out
+of order. Progress counts completed pages and displays each page's actual state.
+Cancel marking, navigation, and page failures terminate the pool, including
+synchronous native CV work, and discard partial result images. A failed page is
+reported rather than assigned an invented score. Workers are released after the
+batch; corrected annotations use a disposable worker. The browser needs module
+workers, OffscreenCanvas and createImageBitmap; unsupported browsers receive a
+clear error instead of silently reverting to interface-blocking marking.
+
+Run `npm run test:workers` with `CHROMIUM_PATH` as needed. It checks exact response
+and output-pixel parity for normal/ambiguous/corrected scans, actual two-worker
+overlap, an interface heartbeat during native processing, stable student order,
+worker/URL cleanup on completion/cancellation/failure, hardware caps, and parallel
+progress states. `WORKER_TEST_BUILD=1 npm run test:workers` builds and tests the
+production worker/chunk URLs as well. `test:geometry` also compares worker versus
+main-thread recognition on the first real IB and IGCSE sample pages. Startup and
+memory overhead can outweigh parallelism for small batches; this is not a claim
+of a fixed speed multiplier on every device.
