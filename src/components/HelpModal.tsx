@@ -1,92 +1,93 @@
-import React from 'react';
-import { X, CheckCircle } from 'lucide-react';
-
-interface HelpModalProps {
-  onClose: () => void;
-}
-
-export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
+import { X } from 'lucide-react';
+import { Dialog } from './Dialog';
+import { APP_VERSION, RELEASE_NAME } from '../utils/release';
+export function HelpModal({ onClose }: { onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#240c10] border border-[#571622] rounded-2xl max-w-xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-5 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[#571622] pb-3">
+    <Dialog
+      titleId="guide-title"
+      onClose={onClose}
+      className="max-w-2xl p-5 sm:p-6 space-y-5"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
           <div className="flex items-center gap-2">
-            <img src="/icons/Icon128.png" alt="ChilliMark logo" className="w-8 h-8 rounded bg-white p-0.5 object-contain" />
-            <h3 className="text-lg font-bold text-white">ChilliMark Guide</h3>
+            <img
+              src="/icons/Icon128.png"
+              alt="ChilliMark logo"
+              className="w-8 h-8 rounded bg-white p-0.5"
+            />
+            <h2 id="guide-title" className="font-bold text-xl">
+              ChilliMark Guide
+            </h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-[#b1a1a4] hover:text-white hover:bg-[#571622]"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <p className="text-sm text-[#b1a1a4]">
+            v{APP_VERSION} {RELEASE_NAME}
+          </p>
         </div>
-
-        <div className="space-y-4 text-xs text-[#e5cbd0] leading-relaxed">
-          <div>
-            <h4 className="font-bold text-white text-sm mb-1">How ChilliMark Works</h4>
-            <p>
-              ChilliMark uses a heuristic Optical Mark Recognition (OMR) algorithm tailored for
-              standard Cambridge IGCSE and IBDP science multiple choice sheets. Unlike older OMR
-              systems, it requires no special QR codes or black alignment squares.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <h4 className="font-bold text-white text-sm">Recommended Workflow</h4>
-            <ol className="list-decimal pl-5 space-y-1.5">
-              <li>
-                <strong className="text-white">Scan your exam papers:</strong> 300 to 600 DPI is
-                recommended. Auto-feed scanners work great.
-              </li>
-              <li>
-                <strong className="text-white">Load PDF or images:</strong> Drag & drop your scanned
-                file. You can also click "Load 10 Demo Scanned Exams" to see it in action
-                instantly.
-              </li>
-              <li>
-                <strong className="text-white">Enter Candidate Names & Answer Key:</strong> Make
-                sure the student names match the order of the pages in your scan.
-              </li>
-              <li>
-                <strong className="text-white">Calibrate Question Area & One Empty Box:</strong> Frame
-                the question area using the fine-tuning handles or nudge controls, and click on one clean empty
-                bubble to sample it. ChilliMark uses this template to derive bubble dimensions and baseline paper
-                reflectance directly from the scan.
-              </li>
-              <li>
-                <strong className="text-white">Resolve Ambiguities:</strong> If a student shaded two
-                boxes or made an incomplete erasure, you will be prompted to pick the correct one.
-              </li>
-              <li>
-                <strong className="text-white">Review & Export:</strong> Inspect annotated sheets
-                with green/red marks and download CSV spreadsheets for report cards and item response
-                statistics.
-              </li>
-            </ol>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-[#1a080a] border border-[#571622] text-[#fbe1e5] space-y-1">
-            <div className="flex items-center gap-1.5 font-semibold text-emerald-400">
-              <CheckCircle className="w-4 h-4" />
-              <span>Scanning Tips</span>
-            </div>
-            <p className="text-[11px] text-[#b1a1a4]">
-              Advise students to shade with HB pencils or dark pens. Light pencil or incomplete
-              erasures can be adjusted by changing the "Mark Threshold" slider in settings.
-            </p>
-          </div>
-        </div>
-
-        <div className="pt-2 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-[#8c1529] hover:bg-[#a01830] text-white text-xs font-bold transition-colors"
-          >
-            Got it, Let's Mark!
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          aria-label="Close guide"
+          className="min-h-11 min-w-11 rounded-lg hover:bg-[#571622]"
+        >
+          <X className="w-5 h-5 mx-auto" />
+        </button>
       </div>
-    </div>
+      <p className="text-sm text-[#d8c7ca]">
+        Mark Cambridge IGCSE and IBDP multiple-choice sheets without QR codes or
+        printed alignment markers.
+      </p>
+      <ol className="list-decimal pl-5 space-y-4 text-sm text-[#d8c7ca]">
+        <li>
+          <strong className="text-white">Load your scans.</strong> Choose PDF,
+          PNG or JPEG files, or use a sample. Scan at 600 DPI where possible.
+          Sample PDFs include their own names and answer keys: 27 answers for
+          IGCSE, 30 for IBDP.
+        </li>
+        <li>
+          <strong className="text-white">Check names and answers.</strong> Enter
+          one name per page, in page order, or leave names empty to use Student
+          01, Student 02, and so on. Enter one answer letter per question;
+          spaces and line breaks are ignored. Check the page preview before
+          continuing.
+        </li>
+        <li>
+          <strong className="text-white">Select the question area.</strong> Drag
+          around the complete answer grid on the first page using a mouse,
+          finger or pen. Review the rectangle, then choose “Next: Select Box”.
+          Use Pan to move a zoomed page and the zoom buttons to magnify it.
+        </li>
+        <li>
+          <strong className="text-white">Select one empty box.</strong> In Draw
+          mode, drag a snug rectangle around one clean, unmarked answer box.
+          Wait for “Empty box ready”, then choose “Mark Exams”. If selection
+          fails, zoom in and try another empty box.
+        </li>
+        <li>
+          <strong className="text-white">Review ambiguous answers.</strong>{' '}
+          Select the intended answer, Blank, or Unclear, then confirm to move
+          on. Back lets you revisit earlier decisions before the last
+          confirmation. Zoom the snippet if needed. Cancel review returns to
+          setup.
+        </li>
+        <li>
+          <strong className="text-white">Review and export.</strong> Results
+          open on Overall statistics. Use Student scores or Marked sheets for
+          individual results. Export the class report, item statistics or ZIP; a
+          single sheet can be downloaded or printed in Marked sheets.
+        </li>
+      </ol>
+      <div className="rounded-xl bg-[#18090b] p-4 text-sm text-[#b1a1a4]">
+        Use clear, dark marks and avoid faint scans or heavy erasures.
+        ChilliMark learns the box shape and paper background from the empty box
+        you select. Marking runs in the background; Cancel marking stops the
+        batch and returns to setup.
+      </div>
+      <button
+        onClick={onClose}
+        className="min-h-11 w-full sm:w-auto px-5 rounded-xl bg-[#8c1529] font-semibold"
+      >
+        Got it
+      </button>
+    </Dialog>
   );
-};
+}

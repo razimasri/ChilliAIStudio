@@ -1,5 +1,5 @@
 ![ChilliMark Logo](/icons/Banner.png)
-# ChilliMark 
+# ChilliMark — v2.0 Birdseye
 
 
 ChilliMark Heuristical Identification of Landmark-Less Input Multiple-choice Answer Recognition Kernel
@@ -9,6 +9,37 @@ ChilliMark is able to mark some multiple choice sheets without the use of QR cod
 It was developed against the multiple choice sheets for the IBDP and IGCSE exams boards. Specifically it was developed for the science version of the multiple choice sheets.
 
 It was designed to match the work flow of teachers who should have ready access to auto-feed scanners. Note: Due to this is does not do any deskewing, only rotation and scaling.
+
+## Birdseye browser workflow
+
+Load PDF, PNG or JPEG scans, then check the names and answer key. The upload
+area collapses after loading and Continue stays visible at the bottom. Names
+are optional: blank names produce Student 01, Student 02, and so on. If names
+are supplied, enter exactly one per page. Removing a page removes its matching
+name when the counts agree. Real uploads never insert the sample names.
+Samples include 27 IGCSE or 30 IBDP answers.
+
+Calibration supports mouse, finger and pen. Use Draw to frame the answer grid,
+review it, then choose Next: Select Box. Use Pan to move a zoomed page and the
+zoom buttons/Fit to change its display scale. Draw around one clean empty box,
+wait for Empty box ready, then choose Mark Exams. These controls change display
+and selection only; MCQ detection and grading are unchanged.
+
+For ambiguous answers, choose a response and confirm. Back revisits previous
+decisions before the last confirmation; Cancel review returns to setup. Snippet
+zoom helps inspect marks. Results open on Overall statistics. Student scores
+and Marked sheets are separate tabs; per-student PNG/print controls are in the
+student card, and ZIP/CSV exports are in the results header. Marked sheets appear
+before the question breakdown on narrow screens and include zoom/Fit controls.
+The in-app Guide describes the same workflow. The desktop screenshots below
+are retained as historical documentation.
+
+`npm run test:interface` checks desktop, tablet, phone and landscape layouts,
+readiness/name alignment, multi-file selection, dialog focus/scroll behavior,
+actual touch/mouse/pen gestures, cancellation/panning, empty-box calibration,
+worker marking, review Back/revision, CSV output, and the mobile result flow.
+Set `CHROMIUM_PATH` to use a system Chromium. Touch tests use Chromium device
+emulation; they do not substitute for testing physical iOS/Android hardware.
 
 ## Branding
 
@@ -39,7 +70,7 @@ Generate a CSV with both each students score and individual question response ra
 ### Clear up ambiguous choices
 If two boxes are detected with answers the user can choose the correct questions
 
-## Usage
+## Original desktop workflow
 1. Scan your completed exams using 600 DPI. 
 
 2. Load your PDF - Drag and drop is supported
@@ -59,7 +90,7 @@ If two boxes are detected with answers the user can choose the correct questions
 
 6. Finished. Review the output for any mistakes. Run again is there are issue. I hope to allow finer corrections in future updates
 
-## Future Improvements
+## Original desktop roadmap
 1. Round bubbles
 1. Full Manual Mode
 1. Resizable Gui

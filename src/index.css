@@ -76,3 +76,20 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #8c1529;
 }
+
+/* Shared keyboard and touch affordances. Leave browser zoom available outside drawing canvases. */
+button, summary, a { touch-action: manipulation; }
+button:not(:disabled), summary { cursor: pointer; }
+button:focus-visible, summary:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible {
+  outline: 2px solid #f3b0ba;
+  outline-offset: 3px;
+}
+@media (any-pointer: coarse) {
+  button, select, summary { min-height: 44px; min-width: 44px; }
+  input, select, textarea { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+html { scrollbar-gutter: stable; }

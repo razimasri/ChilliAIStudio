@@ -14,14 +14,15 @@ import {
   QuestionStat,
 } from './types';
 import { releaseUnusedSources } from './utils/pdfProcessor';
-import { releaseAllImages, releaseImage, releaseResultImages } from './utils/imageStore';
+import {
+  releaseAllImages,
+  releaseImage,
+  releaseResultImages,
+} from './utils/imageStore';
 import { markBatch } from './utils/markingBatch';
 import { MarkingClient } from './utils/markingClient';
 import { gradeStudent, resolveStudentResponse } from './utils/grading';
-import {
-  calculateQuestionStats,
-  decodeCVError,
-} from './utils/omrEngine';
+import { calculateQuestionStats, decodeCVError } from './utils/omrEngine';
 
 export function App() {
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -57,21 +58,29 @@ export function App() {
     releaseUnusedSources(previousFiles.current, files);
     previousFiles.current = files;
   }, [files]);
-  useEffect(() => () => {
-    batchController.current?.abort();
-    releaseUnusedSources(previousFiles.current, []);
-    releaseAllImages();
-  }, []);
+  useEffect(
+    () => () => {
+      batchController.current?.abort();
+      releaseUnusedSources(previousFiles.current, []);
+      releaseAllImages();
+    },
+    [],
+  );
 
   // Marking state
-  const [markingPages, setMarkingPages] = useState<{active:number[];done:number[]}>({active:[],done:[]});
+  const [markingPages, setMarkingPages] = useState<{
+    active: number[];
+    done: number[];
+  }>({ active: [], done: [] });
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [markingStatusText, setMarkingStatusText] = useState<string>('');
   const [pageErrors, setPageErrors] = useState<string[]>([]);
   const [studentResults, setStudentResults] = useState<StudentResult[]>([]);
 
   // Ambiguity resolution state
-  const [ambiguityQueue, setAmbiguityQueue] = useState<AmbiguityResolutionItem[]>([]);
+  const [ambiguityQueue, setAmbiguityQueue] = useState<
+    AmbiguityResolutionItem[]
+  >([]);
   const [currentAmbiguityIdx, setCurrentAmbiguityIdx] = useState<number>(0);
 
   // Statistics
@@ -104,7 +113,7 @@ export function App() {
     releaseResultImages(studentResults);
     setStudentResults([]);
     setCurrentStep(3);
-    setMarkingPages({active:[],done:[]});
+    setMarkingPages({ active: [], done: [] });
     setProgressPercent(0);
     setPageErrors([]);
     setMarkingStatusText('Initializing OMR heuristic engine...');
@@ -121,11 +130,21 @@ export function App() {
     };
 
     try {
-      const marked = await markBatch(files, names, activeParams, controller.signal, progress => {
-        setMarkingPages({active:progress.active,done:progress.done});
-        setProgressPercent(Math.round(progress.completed / files.length * 100));
-        setMarkingStatusText(`${progress.workers} background worker${progress.workers === 1 ? '' : 's'} · ${progress.message}`);
-      });
+      const marked = await markBatch(
+        files,
+        names,
+        activeParams,
+        controller.signal,
+        (progress) => {
+          setMarkingPages({ active: progress.active, done: progress.done });
+          setProgressPercent(
+            Math.round((progress.completed / files.length) * 100),
+          );
+          setMarkingStatusText(
+            `${progress.workers} background worker${progress.workers === 1 ? '' : 's'} · ${progress.message}`,
+          );
+        },
+      );
       results.push(...marked);
       controller.signal.throwIfAborted();
       for (const res of results) {
@@ -135,9 +154,14 @@ export function App() {
               studentIndex: res.index,
               studentName: res.name,
               questionNumber: q.number + 1,
-              cropDataUrl: res.ambiguityCrops?.[q.number] || res.rawDeskewedDataUrl || res.annotatedDataUrl,
+              cropDataUrl:
+                res.ambiguityCrops?.[q.number] ||
+                res.rawDeskewedDataUrl ||
+                res.annotatedDataUrl,
               currentResponse: false,
-              detectedLetters: q.boxes.filter(b => b.bool).map(b => b.letter),
+              detectedLetters: q.boxes
+                .filter((b) => b.bool)
+                .map((b) => b.letter),
               choicesCount: activeParams.choices || 4,
             });
           }
@@ -178,14 +202,31 @@ export function App() {
 
     if (targetStudent) {
       try {
-        updatedResults[studentIdx] = resolveStudentResponse(targetStudent, qNum, resolvedChoice, key);
+        updatedResults[studentIdx] = resolveStudentResponse(
+          targetStudent,
+          qNum,
+          resolvedChoice,
+          key,
+        );
       } catch (error) {
-        setPageErrors(previous => [...previous, error instanceof Error ? error.message : 'Could not apply correction.']);
+        setPageErrors((previous) => [
+          ...previous,
+          error instanceof Error
+            ? error.message
+            : 'Could not apply correction.',
+        ]);
         return;
       }
     }
 
     setStudentResults(updatedResults);
+    setAmbiguityQueue((queue) =>
+      queue.map((item, index) =>
+        index === currentAmbiguityIdx
+          ? { ...item, currentResponse: resolvedChoice }
+          : item,
+      ),
+    );
 
     // Next ambiguity or finish
     if (currentAmbiguityIdx + 1 < ambiguityQueue.length) {
@@ -199,21 +240,31 @@ export function App() {
       try {
         signal?.throwIfAborted();
         client = new MarkingClient();
-        signal?.addEventListener('abort', cancel, {once:true});
-        const corrected = new Set(ambiguityQueue.map(item => item.studentIndex));
+        signal?.addEventListener('abort', cancel, { once: true });
+        const corrected = new Set(
+          ambiguityQueue.map((item) => item.studentIndex),
+        );
         for (const i of corrected) {
           const student = updatedResults[i];
           if (student.rawDeskewedDataUrl) {
-            setMarkingStatusText(`Preparing corrected sheet for ${student.name}…`);
+            setMarkingStatusText(
+              `Preparing corrected sheet for ${student.name}…`,
+            );
             const oldImage = student.annotatedDataUrl;
-            student.annotatedDataUrl = await client.annotate(student, { ...params, key });
+            student.annotatedDataUrl = await client.annotate(student, {
+              ...params,
+              key,
+            });
             signal?.throwIfAborted();
             if (oldImage !== student.rawDeskewedDataUrl) releaseImage(oldImage);
           }
         }
       } catch (error) {
         if (signal?.aborted) return;
-        setPageErrors(previous => [...previous, `Could not prepare corrected sheets: ${error instanceof Error ? error.message : String(error)}`]);
+        setPageErrors((previous) => [
+          ...previous,
+          `Could not prepare corrected sheets: ${error instanceof Error ? error.message : String(error)}`,
+        ]);
         return;
       } finally {
         signal?.removeEventListener('abort', cancel);
@@ -223,11 +274,18 @@ export function App() {
     }
   };
 
-  const finishMarking = (results: StudentResult[], calibParams: CalibrationParams) => {
+  const finishMarking = (
+    results: StudentResult[],
+    calibParams: CalibrationParams,
+  ) => {
     const key = calibParams.key;
-    const gradedResults = results.map(student => gradeStudent(student, key));
+    const gradedResults = results.map((student) => gradeStudent(student, key));
     setStudentResults(gradedResults);
-    const stats = calculateQuestionStats(gradedResults, key, calibParams.choices || 4);
+    const stats = calculateQuestionStats(
+      gradedResults,
+      key,
+      calibParams.choices || 4,
+    );
     setExamStats(stats);
     setCurrentStep(4);
   };
@@ -241,15 +299,8 @@ export function App() {
     setStudentResults([]);
     setAmbiguityQueue([]);
     setExamStats([]);
-    setMarkingPages({active:[],done:[]});
+    setMarkingPages({ active: [], done: [] });
     setProgressPercent(0);
-  };
-
-  const handleUpdateFirstFile = (updated: ExamFile) => {
-    if (files.length === 0) return;
-    const newFiles = [...files];
-    newFiles[0] = updated;
-    setFiles(newFiles);
   };
 
   return (
@@ -262,7 +313,27 @@ export function App() {
         {currentStep === 1 && (
           <UploadAndInputStep
             files={files}
-            onFilesChange={setFiles}
+            onFilesChange={(next) => {
+              if (
+                files[0]?.id !== next[0]?.id ||
+                files[0]?.rotation !== next[0]?.rotation
+              ) {
+                setParams((previous) => ({
+                  ...previous,
+                  x1: 0,
+                  y1: 0,
+                  x2: 0,
+                  y2: 0,
+                  box_x1: 0,
+                  box_y1: 0,
+                  box_x2: 0,
+                  box_y2: 0,
+                  w: 0,
+                  h: 0,
+                }));
+              }
+              setFiles(next);
+            }}
             studentNamesText={studentNamesText}
             onStudentNamesChange={setStudentNamesText}
             answerKeyText={answerKeyText}
@@ -278,7 +349,6 @@ export function App() {
             firstFile={files[0]}
             params={params}
             onParamsChange={setParams}
-            onUpdateFile={handleUpdateFirstFile}
             onBack={() => setCurrentStep(1)}
             onProceedToMark={startMarkingProcess}
           />
@@ -292,7 +362,10 @@ export function App() {
             progressPercent={progressPercent}
             statusText={markingStatusText}
             pageErrors={pageErrors}
-            onBack={() => { batchController.current?.abort(); setCurrentStep(1); }}
+            onBack={() => {
+              batchController.current?.abort();
+              setCurrentStep(1);
+            }}
           />
         )}
 
@@ -314,6 +387,16 @@ export function App() {
           totalCount={ambiguityQueue.length}
           optionsCount={params.choices || 4}
           onResolve={handleResolveAmbiguity}
+          onBack={() =>
+            setCurrentAmbiguityIdx((index) => Math.max(0, index - 1))
+          }
+          onCancel={() => {
+            batchController.current?.abort();
+            releaseResultImages(studentResults);
+            setStudentResults([]);
+            setAmbiguityQueue([]);
+            setCurrentStep(1);
+          }}
         />
       )}
 
