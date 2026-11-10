@@ -12,11 +12,7 @@ import {
 } from 'lucide-react';
 import { ExamFile, CalibrationParams } from '../types';
 import { loadExamFile, PdfProgressInfo } from '../utils/pdfProcessor';
-import {
-  SAMPLE_STUDENT_NAMES,
-  SAMPLE_ANSWER_KEY_40,
-  generateSampleDemoBatch,
-} from '../utils/sampleData';
+import { REAL_SAMPLE_CONFIGS, SAMPLE_STUDENT_NAMES } from '../utils/sampleData';
 import { rotateScanImage } from '../utils/omrEngine';
 import { PdfLoadingOverlay } from './PdfLoadingOverlay';
 
@@ -150,7 +146,8 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
   const handleLoadDemo = async (variant: 'cambridge' | 'ibdp' = 'cambridge') => {
     setIsLoadingFile(true);
     setErrorMsg(null);
-    const fileName = variant === 'cambridge' ? 'IGSample.pdf' : 'IBSample.pdf';
+    const sample = REAL_SAMPLE_CONFIGS[variant];
+    const fileName = sample.name;
     const filePath = `/samples/${fileName}`;
 
     setPdfProgress({
@@ -195,7 +192,7 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
       const pageNames = sampleNames.slice(0, loadedPages.length);
       onStudentNamesChange(pageNames.join('\n'));
 
-      const sampleKey = 'BACDBCADAABDCADBCAADBCADBCADAABDCADBCADB';
+      const sampleKey = sample.answerKey;
       onAnswerKeyChange(sampleKey);
 
       const keyObj: Record<number, string> = {};
