@@ -68,8 +68,19 @@ try {
       threshold.delete(); contours.delete(); hierarchy.delete();
       if (!candidates.length) throw new Error(`${name}: no calibration box candidates`);
       candidates.sort((a, b) => a.y - b.y || a.x - b.x);
-      const sample = candidates[name === 'IBSample' ? 1 : 0];
-      const box = engine.set_box(cv, rotated, sample.x, sample.y, sample.x + sample.width, sample.y + sample.height);
+      let box;
+      const ordered = name === 'IBSample' ? [candidates[1], ...candidates] : candidates;
+      for (const sample of ordered) {
+        for (const padding of [0, 1, 2, 3, 4]) {
+          try {
+            const measured = engine.set_box(cv, rotated, sample.x-padding, sample.y-padding,
+              sample.x+sample.width+padding, sample.y+sample.height+padding);
+            if (measured.w >= sample.width*0.8 && measured.h >= sample.height*0.8) { box = measured; break; }
+          } catch { /* Select another empty box when original validation rejects it. */ }
+        }
+        if (box) break;
+      }
+      if (!box) throw new Error(`${name}: no valid calibration selection`);
       const params = {
         rect, ...box,
         x1: Math.max(0, Math.min(...candidates.map(b => b.x)) - 50),

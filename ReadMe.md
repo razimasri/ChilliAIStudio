@@ -94,3 +94,20 @@ The check loads both complete sample PDFs at 600 DPI, checks every page's native
 size, and runs detection and correction rendering on two pages from each sample.
 This requires more time and memory than low-resolution previews; it checks the
 coordinate pipeline, not recognition accuracy against a manually verified key.
+
+The calibration parity check runs the original Python `Parameters.set_box` and
+`find_responses` methods against the same pixels and box centers used in Chromium.
+It covers rounded empty boxes, crosses, shading, multiple marks, faint marks,
+erasure residue, and the first IB and IGCSE sample pages. Row reconstruction is
+shared test input, so its separate port differences do not affect this comparison.
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install numpy opencv-python-headless
+PYTHON=.venv/bin/python npm run test:calibration
+```
+
+`CHROMIUM_PATH` is supported as for the geometry check. Invalid box selections
+are rejected instead of being replaced with fabricated contours. The browser
+limits contour expansion to 128 attempts and reports failure if it cannot
+stabilize; valid selections use the original area-stability rule and threshold.
