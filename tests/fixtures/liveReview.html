@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Live review interactions</title>
+  </head>
+  <body>
+    <script type="module">
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { AmbiguityModal } from '/src/components/AmbiguityModal.tsx';
+      import '/src/index.css';
+      const crop =
+        'data:image/svg+xml,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="230"><rect width="1000" height="230" fill="white"/><text x="70" y="130" font-size="50">A</text><text x="320" y="130" font-size="50">B</text><text x="570" y="130" font-size="50">C</text><text x="820" y="130" font-size="50">D</text></svg>',
+        );
+      const root = document.createElement('div');
+      document.body.appendChild(root);
+      window.selections = [];
+      createRoot(root).render(
+        React.createElement(AmbiguityModal, {
+          item: {
+            studentIndex: 0,
+            studentName: 'Review test',
+            questionNumber: 1,
+            cropDataUrl: crop,
+            currentResponse: false,
+            detectedLetters: ['A', 'C'],
+            choicesCount: 4,
+          },
+          currentIndex: 0,
+          totalCount: 2,
+          onResolve: (choice) => {
+            window.selections.push(choice);
+          },
+          backgroundStatus: 'Background marking: 1 of 3 pages complete',
+        }),
+      );
+    </script>
+  </body>
+</html>

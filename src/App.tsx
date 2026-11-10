@@ -20,6 +20,7 @@ import {
   releaseResultImages,
 } from './utils/imageStore';
 import { markBatch } from './utils/markingBatch';
+import { reviewItem } from './utils/reviewQueue';
 import { MarkingClient } from './utils/markingClient';
 import { gradeStudent, resolveStudentResponse } from './utils/grading';
 import { calculateQuestionStats, decodeCVError } from './utils/omrEngine';
@@ -105,37 +106,73 @@ export function App() {
     return map;
   };
 
-  // Trigger grading process matching Python Student.get and Student.mark
+  type Session = {
+    controller: AbortController;
+    results: StudentResult[];
+    queue: AmbiguityResolutionItem[];
+    cursor: number;
+    done: boolean;
+    finalizing: boolean;
+    params: CalibrationParams;
+  };
+  const sessionRef = useRef<Session>();
+  const [batchDone, setBatchDone] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const syncReview = (session: Session) => {
+    if (sessionRef.current !== session || session.controller.signal.aborted)
+      return;
+    setStudentResults(session.results.filter(Boolean));
+    setAmbiguityQueue([...session.queue]);
+    setCurrentAmbiguityIdx(session.cursor);
+  };
+  const cancelSession = () => {
+    batchController.current?.abort();
+    if (sessionRef.current)
+      releaseResultImages(sessionRef.current.results.filter(Boolean));
+    sessionRef.current = undefined;
+    setStudentResults([]);
+    setAmbiguityQueue([]);
+    setFinalizing(false);
+    setCurrentStep(1);
+  };
   const startMarkingProcess = async () => {
     batchController.current?.abort();
+    releaseResultImages(studentResults);
     const controller = new AbortController();
     batchController.current = controller;
-    releaseResultImages(studentResults);
+    const activeParams = {
+      ...params,
+      key: getParsedKey(),
+      names: getCandidateNames(),
+    };
+    const session: Session = {
+      controller,
+      params: activeParams,
+      results: [],
+      queue: [],
+      cursor: 0,
+      done: false,
+      finalizing: false,
+    };
+    sessionRef.current = session;
     setStudentResults([]);
+    setAmbiguityQueue([]);
+    setCurrentAmbiguityIdx(0);
+    setBatchDone(false);
+    setFinalizing(false);
     setCurrentStep(3);
     setMarkingPages({ active: [], done: [] });
     setProgressPercent(0);
     setPageErrors([]);
-    setMarkingStatusText('Initializing OMR heuristic engine...');
-
-    const names = getCandidateNames();
-    const key = getParsedKey();
-    const results: StudentResult[] = [];
-    const ambiguities: AmbiguityResolutionItem[] = [];
-
-    const activeParams: CalibrationParams = {
-      ...params,
-      key,
-      names,
-    };
-
+    setMarkingStatusText('Starting background marking…');
     try {
-      const marked = await markBatch(
+      await markBatch(
         files,
-        names,
+        activeParams.names,
         activeParams,
         controller.signal,
         (progress) => {
+          if (sessionRef.current !== session) return;
           setMarkingPages({ active: progress.active, done: progress.done });
           setProgressPercent(
             Math.round((progress.completed / files.length) * 100),
@@ -144,133 +181,116 @@ export function App() {
             `${progress.workers} background worker${progress.workers === 1 ? '' : 's'} · ${progress.message}`,
           );
         },
+        undefined,
+        (result) => {
+          if (sessionRef.current !== session || controller.signal.aborted)
+            return;
+          session.results[result.index] = result;
+          // Review completed pages as they arrive; final results stay indexed by input page.
+          for (const question of result.incomplete)
+            session.queue.push(reviewItem(result, question, activeParams));
+          syncReview(session);
+        },
       );
-      results.push(...marked);
       controller.signal.throwIfAborted();
-      for (const res of results) {
-        if (res.hasAmbiguity && res.incomplete.length > 0) {
-          for (const q of res.incomplete) {
-            ambiguities.push({
-              studentIndex: res.index,
-              studentName: res.name,
-              questionNumber: q.number + 1,
-              cropDataUrl:
-                res.ambiguityCrops?.[q.number] ||
-                res.rawDeskewedDataUrl ||
-                res.annotatedDataUrl,
-              currentResponse: false,
-              detectedLetters: q.boxes
-                .filter((b) => b.bool)
-                .map((b) => b.letter),
-              choicesCount: activeParams.choices || 4,
-            });
-          }
-        }
-      }
-
-      setStudentResults(results);
-
-      // If ambiguities exist, pop up resolution modal matching Python corrections
-      if (ambiguities.length > 0) {
-        setAmbiguityQueue(ambiguities);
-        setCurrentAmbiguityIdx(0);
-      } else {
-        finishMarking(results, activeParams);
-      }
-    } catch (err) {
-      releaseResultImages(results);
-      if (controller.signal.aborted) return;
-      const decoded = decodeCVError(null, err);
-      console.error('Fatal error during marking process:', decoded, err);
-      setPageErrors((prev) => [...prev, `Batch execution halted: ${decoded}`]);
-    } finally {
-      if (controller.signal.aborted) releaseResultImages(results);
+      if (sessionRef.current !== session) return;
+      session.done = true;
+      setBatchDone(true);
+      syncReview(session);
+      if (!session.queue.length) finishMarking(session.results, activeParams);
+    } catch (error) {
+      if (controller.signal.aborted || sessionRef.current !== session) return;
+      controller.abort();
+      releaseResultImages(session.results.filter(Boolean));
+      setStudentResults([]);
+      setAmbiguityQueue([]);
+      setPageErrors([`Marking stopped: ${decodeCVError(null, error)}`]);
     }
   };
-
-  // Ambiguity resolution handler matching Python corrections & correction_update
-  const handleResolveAmbiguity = async (resolvedChoice: string) => {
-    const currentItem = ambiguityQueue[currentAmbiguityIdx];
-    if (!currentItem) return;
-
-    const studentIdx = currentItem.studentIndex;
-    const qNum = currentItem.questionNumber - 1; // back to 0-indexed
-    const key = getParsedKey();
-
-    const updatedResults = [...studentResults];
-    const targetStudent = updatedResults[studentIdx];
-
-    if (targetStudent) {
-      try {
-        updatedResults[studentIdx] = resolveStudentResponse(
-          targetStudent,
-          qNum,
-          resolvedChoice,
-          key,
-        );
-      } catch (error) {
-        setPageErrors((previous) => [
-          ...previous,
-          error instanceof Error
-            ? error.message
-            : 'Could not apply correction.',
-        ]);
-        return;
-      }
+  const handleResolveAmbiguity = (choice: string) => {
+    const session = sessionRef.current,
+      item = session?.queue[session.cursor];
+    if (
+      !session ||
+      !item ||
+      session.finalizing ||
+      session.controller.signal.aborted
+    )
+      return;
+    try {
+      session.results[item.studentIndex] = resolveStudentResponse(
+        session.results[item.studentIndex],
+        item.questionNumber - 1,
+        choice,
+        session.params.key,
+      );
+      session.queue[session.cursor] = { ...item, currentResponse: choice };
+      session.cursor++;
+      syncReview(session);
+    } catch (error) {
+      setPageErrors((previous) => [
+        ...previous,
+        error instanceof Error ? error.message : String(error),
+      ]);
     }
-
-    setStudentResults(updatedResults);
-    setAmbiguityQueue((queue) =>
-      queue.map((item, index) =>
-        index === currentAmbiguityIdx
-          ? { ...item, currentResponse: resolvedChoice }
-          : item,
-      ),
-    );
-
-    // Next ambiguity or finish
-    if (currentAmbiguityIdx + 1 < ambiguityQueue.length) {
-      setCurrentAmbiguityIdx((prev) => prev + 1);
-    } else {
-      setAmbiguityQueue([]);
-      // Final corrected sheets also render off the interface thread.
-      let client: MarkingClient | undefined;
-      const signal = batchController.current?.signal;
-      const cancel = () => client?.dispose();
-      try {
-        signal?.throwIfAborted();
-        client = new MarkingClient();
-        signal?.addEventListener('abort', cancel, { once: true });
-        const corrected = new Set(
-          ambiguityQueue.map((item) => item.studentIndex),
-        );
-        for (const i of corrected) {
-          const student = updatedResults[i];
-          if (student.rawDeskewedDataUrl) {
-            setMarkingStatusText(
-              `Preparing corrected sheet for ${student.name}…`,
-            );
-            const oldImage = student.annotatedDataUrl;
-            student.annotatedDataUrl = await client.annotate(student, {
-              ...params,
-              key,
-            });
-            signal?.throwIfAborted();
-            if (oldImage !== student.rawDeskewedDataUrl) releaseImage(oldImage);
-          }
+  };
+  const previousCorrection = () => {
+    const session = sessionRef.current;
+    if (!session || session.finalizing) return;
+    session.cursor = Math.max(0, session.cursor - 1);
+    syncReview(session);
+  };
+  const nextCorrection = () => {
+    const session = sessionRef.current;
+    if (!session || !session.queue[session.cursor]?.currentResponse) return;
+    session.cursor++;
+    syncReview(session);
+  };
+  const finishReview = async () => {
+    const session = sessionRef.current;
+    if (
+      !session ||
+      !session.done ||
+      session.finalizing ||
+      session.queue.some((item) => !item.currentResponse)
+    )
+      return;
+    session.finalizing = true;
+    setFinalizing(true);
+    let client: MarkingClient | undefined;
+    const cancel = () => client?.dispose();
+    try {
+      session.controller.signal.throwIfAborted();
+      client = new MarkingClient();
+      session.controller.signal.addEventListener('abort', cancel, {
+        once: true,
+      });
+      for (const index of new Set(
+        session.queue.map((item) => item.studentIndex),
+      )) {
+        const student = session.results[index];
+        if (!student.rawDeskewedDataUrl) continue;
+        setMarkingStatusText(`Preparing corrected sheet for ${student.name}…`);
+        const old = student.annotatedDataUrl,
+          next = await client.annotate(student, session.params);
+        if (session.controller.signal.aborted) {
+          releaseImage(next);
+          return;
         }
-      } catch (error) {
-        if (signal?.aborted) return;
-        setPageErrors((previous) => [
-          ...previous,
+        student.annotatedDataUrl = next;
+        if (old !== student.rawDeskewedDataUrl) releaseImage(old);
+      }
+      finishMarking(session.results, session.params);
+    } catch (error) {
+      if (!session.controller.signal.aborted)
+        setPageErrors([
           `Could not prepare corrected sheets: ${error instanceof Error ? error.message : String(error)}`,
         ]);
-        return;
-      } finally {
-        signal?.removeEventListener('abort', cancel);
-        client?.dispose();
-      }
-      finishMarking(updatedResults, { ...params, key });
+    } finally {
+      client?.dispose();
+      session.controller.signal.removeEventListener('abort', cancel);
+      session.finalizing = false;
+      setFinalizing(false);
     }
   };
 
@@ -294,6 +314,20 @@ export function App() {
     batchController.current?.abort();
     releaseResultImages(studentResults);
     releaseAllImages();
+    sessionRef.current = undefined;
+    setStudentNamesText('');
+    setAnswerKeyText('');
+    setParams((previous) => ({
+      ...previous,
+      key: {},
+      names: [],
+      x1: 0,
+      y1: 0,
+      x2: 0,
+      y2: 0,
+      w: 0,
+      h: 0,
+    }));
     setCurrentStep(1);
     setFiles([]);
     setStudentResults([]);
@@ -362,10 +396,7 @@ export function App() {
             progressPercent={progressPercent}
             statusText={markingStatusText}
             pageErrors={pageErrors}
-            onBack={() => {
-              batchController.current?.abort();
-              setCurrentStep(1);
-            }}
+            onBack={cancelSession}
           />
         )}
 
@@ -379,24 +410,50 @@ export function App() {
         )}
       </main>
 
-      {/* Ambiguity Resolution Modal */}
-      {ambiguityQueue.length > 0 && (
+      {currentStep === 3 &&
+        ambiguityQueue.length > 0 &&
+        !ambiguityQueue[currentAmbiguityIdx] && (
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[#571622] bg-[#240c10] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] flex flex-wrap justify-center items-center gap-3">
+            <p role="status">
+              {finalizing
+                ? markingStatusText
+                : batchDone
+                  ? 'All corrections reviewed. Ready to view results.'
+                  : 'Corrections up to date. More pages are marking in the background…'}
+            </p>
+            <button
+              disabled={finalizing}
+              onClick={previousCorrection}
+              className="min-h-12 px-4 rounded-xl bg-[#571622] disabled:opacity-40"
+            >
+              Previous correction
+            </button>
+            {batchDone && (
+              <button
+                disabled={finalizing || pageErrors.length > 0}
+                onClick={finishReview}
+                className="min-h-12 px-5 rounded-xl bg-emerald-700 font-bold disabled:opacity-40"
+              >
+                {finalizing ? 'Preparing results…' : 'View results'}
+              </button>
+            )}
+          </div>
+        )}
+      {currentStep === 3 && ambiguityQueue[currentAmbiguityIdx] && (
         <AmbiguityModal
           item={ambiguityQueue[currentAmbiguityIdx]}
           currentIndex={currentAmbiguityIdx}
           totalCount={ambiguityQueue.length}
           optionsCount={params.choices || 4}
           onResolve={handleResolveAmbiguity}
-          onBack={() =>
-            setCurrentAmbiguityIdx((index) => Math.max(0, index - 1))
+          onBack={previousCorrection}
+          onNext={nextCorrection}
+          backgroundStatus={
+            batchDone
+              ? 'All pages marked'
+              : `Background marking: ${markingPages.done.length} of ${files.length} pages complete`
           }
-          onCancel={() => {
-            batchController.current?.abort();
-            releaseResultImages(studentResults);
-            setStudentResults([]);
-            setAmbiguityQueue([]);
-            setCurrentStep(1);
-          }}
+          onCancel={cancelSession}
         />
       )}
 

@@ -317,7 +317,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
 
           <button
             onClick={onReset}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1a080a] text-red-300 hover:text-white hover:bg-red-950/60 border border-red-800/40 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+            className="min-h-12 w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#f3b0ba] text-[#240c10] hover:bg-white border-2 border-white/50 text-base font-bold shadow-lg transition-colors cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" />
             <span>Mark Another Exam</span>
