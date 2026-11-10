@@ -11,8 +11,8 @@ export interface ExamFile {
   rotation: number;
   pageIndex: number;
   totalPages: number;
-  width: number;
-  height: number;
+  width: number; // Native raster width; PDF pages are rendered at 600 DPI
+  height: number; // Swapped with width on manual 90-degree rotation
 }
 
 export interface QuestionBox {
@@ -44,7 +44,7 @@ export interface StudentResult {
   responses: (string | false)[];
   annotatedDataUrl: string;
   originalDataUrl: string;
-  rawDeskewedDataUrl?: string;
+  rawDeskewedDataUrl?: string; // Lossless, registered 4800 × 6840 scan for corrections
   hasAmbiguity: boolean;
   incomplete: DetectedQuestion[];
   ambiguityCrops?: Record<number, string>;

@@ -71,3 +71,26 @@ If two boxes are detected with answers the user can choose the correct questions
 
 
 
+
+## Web port: page geometry
+
+PDFs are rendered at 600 DPI. Only the first-page calibration template is
+resized to 4800 × 6840 before rotation. Each student page keeps its own raster
+dimensions through rotation, then is scaled and translated using the detected
+alignment rectangle into the template's coordinate space. Question areas, box
+contours, correction crops, and final annotations use that registered space.
+Intermediate scans are stored losslessly as PNGs.
+
+For the browser geometry regression check:
+
+```sh
+npm install
+npx playwright install chromium
+npm run test:geometry
+```
+
+To use an existing Chromium installation, set `CHROMIUM_PATH` to its executable.
+The check loads both complete sample PDFs at 600 DPI, checks every page's native
+size, and runs detection and correction rendering on two pages from each sample.
+This requires more time and memory than low-resolution previews; it checks the
+coordinate pipeline, not recognition accuracy against a manually verified key.

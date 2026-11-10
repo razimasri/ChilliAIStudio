@@ -141,6 +141,8 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
       ...target,
       dataUrl: rotated,
       rotation: newRot,
+      width: target.height,
+      height: target.width,
     };
     onFilesChange(updatedFiles);
   };

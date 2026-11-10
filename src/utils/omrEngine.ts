@@ -7,6 +7,7 @@ import {
   QuestionStat,
 } from '../types';
 import { getCV } from './cvLoader';
+import { TEMPLATE_HEIGHT, TEMPLATE_WIDTH } from './pageGeometry';
 
 /**
  * Loads an image from dataURL into an HTMLImageElement
@@ -22,17 +23,34 @@ export function loadImageElement(dataUrl: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Renders an image or canvas at canonical (4800, 6840)
+ * Decode a scan without changing its dimensions or orientation.
  */
-export async function renderToCanonicalMat(cv: any, dataUrl: string): Promise<any> {
+export async function renderScanMat(cv: any, dataUrl: string): Promise<any> {
   const img = await loadImageElement(dataUrl);
   const canvas = document.createElement('canvas');
-  canvas.width = 4800;
-  canvas.height = 6840;
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
   const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(img, 0, 0, 4800, 6840);
-  const imgData = ctx.getImageData(0, 0, 4800, 6840);
-  return cv.matFromImageData(imgData);
+  ctx.drawImage(img, 0, 0);
+  const mat = cv.matFromImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
+  canvas.width = 0;
+  canvas.height = 0;
+  return mat;
+}
+
+/** Resize only the first-page calibration template, as in Python load_inputs. */
+export async function renderToCanonicalMat(cv: any, dataUrl: string): Promise<any> {
+  const source = await renderScanMat(cv, dataUrl);
+  const template = new cv.Mat();
+  try {
+    cv.resize(source, template, new cv.Size(TEMPLATE_WIDTH, TEMPLATE_HEIGHT), 0, 0, cv.INTER_LINEAR);
+    return template;
+  } catch (error) {
+    template.delete();
+    throw error;
+  } finally {
+    source.delete();
+  }
 }
 
 /**
@@ -121,106 +139,52 @@ export function get_thresh(cv: any, image: any, blur = true): any {
  *   return largest
  */
 export function largest_cnt(cv: any, image: any): any {
-  // Downsample 4x for high-speed, low-memory contour detection.
-  // Grayscale 1200x1710 takes ~2MB instead of 33MB.
-  const scaleFactor = 4;
-  const smallW = Math.max(1, Math.floor(image.cols / scaleFactor));
-  const smallH = Math.max(1, Math.floor(image.rows / scaleFactor));
-
-  const small = new cv.Mat();
-  cv.resize(image, small, new cv.Size(smallW, smallH), 0, 0, cv.INTER_AREA);
-
+  // The 200px border and 4,000,000px bounding-area cutoff are defined at
+  // the original scan/template resolution. Downsampling changes the contour
+  // used for rotation and registration, especially around thin printed lines.
   const gray = new cv.Mat();
-  if (small.channels() === 4) {
-    cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY);
-  } else if (small.channels() === 3) {
-    cv.cvtColor(small, gray, cv.COLOR_RGB2GRAY);
+  if (image.channels() === 4) {
+    cv.cvtColor(image, gray, cv.COLOR_RGBA2GRAY);
+  } else if (image.channels() === 3) {
+    cv.cvtColor(image, gray, cv.COLOR_RGB2GRAY);
   } else {
-    small.copyTo(gray);
+    image.copyTo(gray);
   }
-  small.delete();
 
   const thresh = new cv.Mat();
   cv.threshold(gray, thresh, 0, 255, cv.THRESH_BINARY_INV | cv.THRESH_OTSU);
   gray.delete();
-
-  // Border of 50px (scaled down from 200px) to eliminate scan edge artifacts
-  const border = Math.floor(200 / scaleFactor);
-  cv.rectangle(
-    thresh,
-    new cv.Point(0, 0),
-    new cv.Point(thresh.cols, thresh.rows),
-    new cv.Scalar(0, 0, 0, 0),
-    border
-  );
+  cv.rectangle(thresh, new cv.Point(0, 0), new cv.Point(thresh.cols, thresh.rows), new cv.Scalar(0), 200);
 
   const cnts = new cv.MatVector();
   const hier = new cv.Mat();
-  cv.findContours(thresh, cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-  thresh.delete();
-  hier.delete();
-
-  let largestContour: any = null;
-  let maxArea = -1;
-
-  for (let i = 0; i < cnts.size(); i++) {
-    const c = cnts.get(i);
-    const a = area(cv, c);
-    if (a > maxArea) {
-      if (largestContour) largestContour.delete();
-      largestContour = c;
-      maxArea = a;
-    } else {
-      c.delete();
+  let largest: any = null;
+  try {
+    cv.findContours(thresh, cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    let maxArea = 4000000;
+    for (let i = 0; i < cnts.size(); i++) {
+      const contour = cnts.get(i);
+      const boundingArea = area(cv, contour);
+      if (boundingArea > maxArea) {
+        if (largest) largest.delete();
+        largest = contour;
+        maxArea = boundingArea;
+      } else {
+        contour.delete();
+      }
     }
+    if (!largest) {
+      throw new Error('No alignment rectangle larger than 4,000,000 pixels found. Check scan resolution and orientation.');
+    }
+    const approx = new cv.Mat();
+    cv.approxPolyDP(largest, approx, 0.01 * cv.arcLength(largest, true), true);
+    return approx;
+  } finally {
+    largest?.delete();
+    cnts.delete();
+    hier.delete();
+    thresh.delete();
   }
-  cnts.delete();
-
-  if (!largestContour || maxArea <= 0) {
-    if (largestContour) largestContour.delete();
-    const fallback = new cv.Mat.zeros(4, 1, cv.CV_32SC2);
-    fallback.data32S[0] = 200;
-    fallback.data32S[1] = 200;
-    fallback.data32S[2] = image.cols - 200;
-    fallback.data32S[3] = 200;
-    fallback.data32S[4] = image.cols - 200;
-    fallback.data32S[5] = image.rows - 200;
-    fallback.data32S[6] = 200;
-    fallback.data32S[7] = image.rows - 200;
-    return fallback;
-  }
-
-  const approxSmall = new cv.Mat();
-  cv.approxPolyDP(largestContour, approxSmall, 0.01 * cv.arcLength(largestContour, true), true);
-  largestContour.delete();
-
-  // Scale contour coordinates back up by scaleFactor (4x)
-  const data = approxSmall.data32S;
-  const fullContour = new cv.Mat.zeros(approxSmall.rows, 1, cv.CV_32SC2);
-  const fullData = fullContour.data32S;
-  for (let i = 0; i < data.length; i++) {
-    fullData[i] = data[i] * scaleFactor;
-  }
-  approxSmall.delete();
-
-  return fullContour;
-}
-
-export function ensurePortrait(cv: any, src: any): any {
-  // Scanner/PDF page is expected to be portrait.
-  // If rasterisation gives us a landscape page, rotate it once before deskewing.
-  if (src.cols <= src.rows) {
-    return src.clone();
-  }
-
-  const portrait = new cv.Mat();
-
-  // Use a single 90° rotation to restore portrait orientation.
-  // If your scanner convention requires the opposite direction,
-  // change CLOCKWISE to COUNTERCLOCKWISE here only.
-  cv.rotate(src, portrait, cv.ROTATE_90_CLOCKWISE);
-
-  return portrait;
 }
 
 export function normaliseDeskewAngle(rawAngle: number): number {
@@ -251,76 +215,35 @@ export function rotation(
   cv: any,
   inputPage: any
 ): { rotated: any; image: any; rect: [number, number, number, number] } {
-  // 1. Guarantee portrait raster before attempting feeder-skew correction.
-  const page = ensurePortrait(cv, inputPage);
-
-  // 2. Existing ChilliMark largest-contour detection.
-  const big = largest_cnt(cv, page);
-
-  // 3. Use minAreaRect only to calculate the small feeder skew.
-  const rect = cv.minAreaRect(big);
-
-  const rawAngle = rect.angle;
-  const angle = normaliseDeskewAngle(rawAngle);
-
-  console.log(
-    'rotation:',
-    'page =',
-    `${page.cols}x${page.rows}`,
-    'raw minAreaRect angle =',
-    rawAngle,
-    'deskew angle =',
-    angle
-  );
-
-  // Safety diagnostic: this should now always be a small correction.
-  if (Math.abs(angle) > 45) {
-    throw new Error(
-      `Invalid deskew angle ${angle}° from raw minAreaRect angle ${rawAngle}°`
-    );
-  }
-
-  // 4. Preserve ChilliMark behaviour:
-  // rotate around the centre of the page.
-  const centre = new cv.Point(
-    Math.floor(page.cols / 2),
-    Math.floor(page.rows / 2)
-  );
-
-  const matrix = cv.getRotationMatrix2D(centre, angle, 1);
-
+  // Match Python rotation(): retain the native page dimensions through deskew.
+  // Orientation changes are explicit in the upload UI, before calibration.
+  const page = inputPage;
+  let big: any = null;
+  let rotatedBig: any = null;
+  let matrix: any = null;
   const rotated = new cv.Mat();
-
-  cv.warpAffine(
-    page,
-    rotated,
-    matrix,
-    new cv.Size(page.cols, page.rows)
-  );
-
-  big.delete?.();
-
-  // 5. Existing ChilliMark behaviour:
-  // re-detect largest contour after deskew for subsequent scaling.
-  const rotatedBig = largest_cnt(cv, rotated);
-  const bounding = cv.boundingRect(rotatedBig);
-
-  matrix.delete();
-  page.delete();
-  rotatedBig.delete?.();
-
-  const boundingBox: [number, number, number, number] = [
-    bounding.x,
-    bounding.y,
-    bounding.width,
-    bounding.height,
-  ];
-
-  return {
-    image: rotated,
-    rotated, // provided for compatibility with both destructuring patterns
-    rect: boundingBox,
-  };
+  try {
+    big = largest_cnt(cv, page);
+    const angle = normaliseDeskewAngle(cv.minAreaRect(big).angle);
+    matrix = cv.getRotationMatrix2D(
+      new cv.Point(Math.floor(page.cols / 2), Math.floor(page.rows / 2)), angle, 1
+    );
+    cv.warpAffine(page, rotated, matrix, new cv.Size(page.cols, page.rows));
+    rotatedBig = largest_cnt(cv, rotated);
+    const bounding = cv.boundingRect(rotatedBig);
+    return {
+      image: rotated,
+      rotated,
+      rect: [bounding.x, bounding.y, bounding.width, bounding.height],
+    };
+  } catch (error) {
+    rotated.delete();
+    throw error;
+  } finally {
+    big?.delete();
+    rotatedBig?.delete();
+    matrix?.delete();
+  }
 }
 
 /**
@@ -393,8 +316,8 @@ export function scale(
   const sx = Math.round(x * scale_x);
   const sy = Math.round(y * scale_y);
 
-  const targetW = 4800;
-  const targetH = 6840;
+  const targetW = TEMPLATE_WIDTH;
+  const targetH = TEMPLATE_HEIGHT;
 
   const resized = new cv.Mat();
   cv.resize(
@@ -1552,7 +1475,7 @@ export function get_correction_crop(
 
 /**
  * Full per-page marking pipeline (executed independently per page):
- * 1. Load scan at canonical resolution (4800, 6840)
+ * 1. Load scan at its native raster dimensions (PDF pages are rendered at 600 DPI)
  * 2. rotation(page) -> deskew
  * 3. scale(page, cur_rect, cal_rect) -> match calibration rectangle size and pad/crop to (4800, 6840)
  * 4. Crop q_area = scan[y1:y2, x1:x2]
@@ -1575,16 +1498,25 @@ export async function processStudentScan(
   params: CalibrationParams,
   onProgress?: (step: string) => void
 ): Promise<StudentResult> {
-  onProgress?.('Rendering page at 600 DPI (4800x6840)...');
-  const pageMat = await renderToCanonicalMat(cv, scanDataUrl);
+  onProgress?.('Loading scan at original resolution...');
+  const pageMat = await renderScanMat(cv, scanDataUrl);
 
   onProgress?.('Detecting largest contour and deskewing page...');
-  const { rotated, rect } = rotation(cv, pageMat);
-  pageMat.delete();
+  let rotated: any;
+  let rect: [number, number, number, number];
+  try {
+    ({ rotated, rect } = rotation(cv, pageMat));
+  } finally {
+    pageMat.delete();
+  }
 
   onProgress?.('Scaling and registering page...');
-  const scaledScan = scale(cv, rotated, rect, params);
-  rotated.delete();
+  let scaledScan: any;
+  try {
+    scaledScan = scale(cv, rotated, rect, params);
+  } finally {
+    rotated.delete();
+  }
 
   onProgress?.('Cropping question area and finding boxes...');
   const qx1 = Math.max(0, Math.min(scaledScan.cols - 50, params.x1));
@@ -1635,7 +1567,7 @@ export async function processStudentScan(
   // Capture clean deskewed scan for ambiguity crops before any annotations are baked
   const cleanCanvas = document.createElement('canvas');
   cv.imshow(cleanCanvas, scaledScan);
-  const rawDeskewedDataUrl = cleanCanvas.toDataURL('image/jpeg', 0.92);
+  const rawDeskewedDataUrl = cleanCanvas.toDataURL('image/png');
 
   const hasAmbiguity = studentState.incomplete.length > 0;
 
@@ -1688,7 +1620,7 @@ export async function processStudentScan(
 
     const markedCanvas = document.createElement('canvas');
     cv.imshow(markedCanvas, scaledScan);
-    annotatedDataUrl = markedCanvas.toDataURL('image/jpeg', 0.92);
+    annotatedDataUrl = markedCanvas.toDataURL('image/png');
   }
 
   const ambiguityCrops: Record<number, string> = {};
@@ -1738,7 +1670,13 @@ export async function renderStudentFinalAnnotation(
   params: CalibrationParams
 ): Promise<string> {
   const baseDataUrl = student.rawDeskewedDataUrl || student.annotatedDataUrl || student.originalDataUrl;
-  const scanMat = await renderToCanonicalMat(cv, baseDataUrl);
+  // This image is already registered to the template. Decode it verbatim;
+  // resizing here would move the stored question centers and sampling contours.
+  const scanMat = await renderScanMat(cv, baseDataUrl);
+  if (scanMat.cols !== TEMPLATE_WIDTH || scanMat.rows !== TEMPLATE_HEIGHT) {
+    scanMat.delete();
+    throw new Error('Final annotation requires a registered 4800 × 6840 scan.');
+  }
 
   const qx1 = Math.max(0, Math.min(scanMat.cols - 50, params.x1));
   const qy1 = Math.max(0, Math.min(scanMat.rows - 50, params.y1));
@@ -1801,7 +1739,7 @@ export async function renderStudentFinalAnnotation(
 
   const canvas = document.createElement('canvas');
   cv.imshow(canvas, scanMat);
-  const finalDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  const finalDataUrl = canvas.toDataURL('image/png');
   scanMat.delete();
 
   return finalDataUrl;

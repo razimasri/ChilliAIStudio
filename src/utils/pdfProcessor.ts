@@ -1,5 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { ExamFile } from '../types';
+import { PDF_POINTS_PER_INCH, SCAN_DPI } from './pageGeometry';
 
 // Set up worker
 try {
@@ -56,54 +57,65 @@ export async function loadExamFile(
     const pages: ExamFile[] = [];
     const numPages = pdf.numPages;
 
-    for (let i = 1; i <= numPages; i++) {
-      const pageStartPercent = Math.round(15 + ((i - 1) / numPages) * 80);
-      onProgress?.({
-        stage: 'rendering',
-        fileName: file.name,
-        currentPage: i,
-        totalPages: numPages,
-        percent: pageStartPercent,
-        message: `Rasterizing page ${i} of ${numPages} at 600 DPI...`,
-      });
+    try {
+      for (let i = 1; i <= numPages; i++) {
+        const pageStartPercent = Math.round(15 + ((i - 1) / numPages) * 80);
+        onProgress?.({
+          stage: 'rendering',
+          fileName: file.name,
+          currentPage: i,
+          totalPages: numPages,
+          percent: pageStartPercent,
+          message: `Rasterizing page ${i} of ${numPages} at 600 DPI...`,
+        });
 
-      // Give event loop time to render the loading animation and state
-      await new Promise((resolve) => setTimeout(resolve, 40));
+        // Give event loop time to render the loading animation and state
+        await new Promise((resolve) => setTimeout(resolve, 40));
 
-      const page = await pdf.getPage(i);
-      // Render at high-resolution 3.5x scale for sharp OMR box detection and scanning fidelity
-      const viewport = page.getViewport({ scale: 3.5 });
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) continue;
+        const page = await pdf.getPage(i);
+        // PDF coordinates use 72 points per inch. Match PyMuPDF's dpi=600;
+        // do not resize student pages to the template before registration.
+        const viewport = page.getViewport({ scale: SCAN_DPI / PDF_POINTS_PER_INCH });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error(`Could not create canvas for page ${i}`);
 
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+        // Avoid adding a pixel for floating-point noise at exact integers
+        // (e.g. an 819pt page can become 6825.000000000001px at 600 DPI).
+        canvas.width = Math.ceil(viewport.width - 1e-7);
+        canvas.height = Math.ceil(viewport.height - 1e-7);
 
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        const dataUrl = canvas.toDataURL('image/png');
 
-      pages.push({
-        id: `${file.name}-page-${i}-${Date.now()}`,
-        name: `${file.name} (Page ${i})`,
-        size: file.size,
-        dataUrl,
-        rotation: 0,
-        pageIndex: i - 1,
-        totalPages: pdf.numPages,
-        width: canvas.width,
-        height: canvas.height,
-      });
+        pages.push({
+          id: `${file.name}-page-${i}-${Date.now()}`,
+          name: `${file.name} (Page ${i})`,
+          size: file.size,
+          dataUrl,
+          rotation: 0,
+          pageIndex: i - 1,
+          totalPages: pdf.numPages,
+          width: canvas.width,
+          height: canvas.height,
+        });
 
-      const pageEndPercent = Math.round(15 + (i / numPages) * 80);
-      onProgress?.({
-        stage: 'rendering',
-        fileName: file.name,
-        currentPage: i,
-        totalPages: numPages,
-        percent: pageEndPercent,
-        message: `Extracted page ${i} of ${numPages} (${canvas.width}×${canvas.height}px)`,
-      });
+        const pageEndPercent = Math.round(15 + (i / numPages) * 80);
+        onProgress?.({
+          stage: 'rendering',
+          fileName: file.name,
+          currentPage: i,
+          totalPages: numPages,
+          percent: pageEndPercent,
+          message: `Extracted page ${i} of ${numPages} (${canvas.width}×${canvas.height}px)`,
+        });
+        // Release large raster buffers between pages at the restored resolution.
+        canvas.width = 0;
+        canvas.height = 0;
+        page.cleanup();
+      }
+    } finally {
+      await pdf.destroy();
     }
 
     onProgress?.({

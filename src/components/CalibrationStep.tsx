@@ -13,9 +13,11 @@ import { CalibrationParams, ExamFile } from '../types';
 import { getCV } from '../utils/cvLoader';
 import {
   renderToCanonicalMat,
+  renderScanMat,
   rotation,
   set_box,
 } from '../utils/omrEngine';
+import { TEMPLATE_HEIGHT, TEMPLATE_WIDTH } from '../utils/pageGeometry';
 
 interface CalibrationStepProps {
   firstFile: ExamFile;
@@ -74,20 +76,19 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     async function initTemplate() {
       setIsInitializingTemplate(true);
       setTemplateError(null);
+      setCanonicalTemplateDataUrl(null);
+      setHasValidBox(false);
       try {
         const cv = await getCV();
         let rotatedMat: any = null;
-        let sheetRect: [number, number, number, number] = [0, 0, 4800, 6840];
-
+        const rawMat = await renderToCanonicalMat(cv, firstFile.dataUrl);
+        let sheetRect: [number, number, number, number];
         try {
-          const rawMat = await renderToCanonicalMat(cv, firstFile.dataUrl);
           const rotRes = rotation(cv, rawMat);
-          rawMat.delete();
           rotatedMat = rotRes.rotated;
           sheetRect = rotRes.rect;
-        } catch (rotErr) {
-          console.warn('Rotation/largest_cnt issue on calibration sheet; using raw render:', rotErr);
-          rotatedMat = await renderToCanonicalMat(cv, firstFile.dataUrl);
+        } finally {
+          rawMat.delete();
         }
 
         if (isCancelled) {
@@ -96,12 +97,12 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         }
 
         const canvas = document.createElement('canvas');
-        canvas.width = 4800;
-        canvas.height = 6840;
         cv.imshow(canvas, rotatedMat);
         rotatedMat.delete();
 
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const dataUrl = canvas.toDataURL('image/png');
+        canvas.width = 0;
+        canvas.height = 0;
         setCanonicalTemplateDataUrl(dataUrl);
 
         onParamsChange({
@@ -111,9 +112,11 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         });
       } catch (e: any) {
         console.error('Failed to initialize calibration template:', e);
-        // Fallback directly to the rasterized firstFile.dataUrl so the page is never blank
-        setCanonicalTemplateDataUrl(firstFile.dataUrl);
-        setTemplateError(e?.message || 'Using original scan render.');
+        if (!isCancelled) {
+          // A raw 600-DPI page is not in template coordinates. Do not let a
+          // failed initialization accept selections in a different frame.
+          setTemplateError(e?.message || 'Could not align the calibration page.');
+        }
       } finally {
         setIsInitializingTemplate(false);
       }
@@ -135,8 +138,8 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      canvas.width = 4800;
-      canvas.height = 6840;
+      canvas.width = TEMPLATE_WIDTH;
+      canvas.height = TEMPLATE_HEIGHT;
 
       // Draw canonical 4800x6840 deskewed scan
       ctx.drawImage(img, 0, 0);
@@ -398,7 +401,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 
       try {
         const cv = await getCV();
-        const tMat = await renderToCanonicalMat(cv, canonicalTemplateDataUrl);
+        const tMat = await renderScanMat(cv, canonicalTemplateDataUrl);
 
         // Convert local coordinates in question area to page coordinates
         const pageBoxX1 = params.x1 + localX1;
@@ -503,7 +506,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
           <span className="text-slate-600">/</span>
           <button
             onClick={() => params.x2 > params.x1 && setStep('sampleBox')}
-            disabled={params.x2 <= params.x1}
+            disabled={isInitializingTemplate || !!templateError || !canonicalTemplateDataUrl || params.x2 <= params.x1}
             className={`flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${
               step === 'sampleBox'
                 ? 'bg-[#8c1529] text-white shadow'
@@ -522,7 +525,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
           {step === 'qArea' ? (
             <button
               onClick={() => setStep('sampleBox')}
-              disabled={params.x2 <= params.x1}
+              disabled={isInitializingTemplate || !!templateError || !canonicalTemplateDataUrl || params.x2 <= params.x1}
               className="px-5 py-2 bg-[#8c1529] hover:bg-[#a31a32] disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg shadow-lg shadow-rose-950/30 transition-all flex items-center space-x-2"
             >
               <span>Next: Select Box</span>
@@ -530,7 +533,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
           ) : (
             <button
               onClick={onProceedToMark}
-              disabled={!hasValidBox}
+              disabled={isInitializingTemplate || !!templateError || !canonicalTemplateDataUrl || !hasValidBox}
               className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg shadow-lg shadow-emerald-950/30 transition-all flex items-center space-x-2"
             >
               <CheckCircle2 className="w-4 h-4" />
@@ -548,6 +551,12 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
             <p className="text-sm font-medium text-slate-300">
               Deskewing and calibrating canonical coordinate space...
             </p>
+          </div>
+        )}
+
+        {templateError && (
+          <div role="alert" className="absolute inset-0 bg-slate-900 z-30 flex items-center justify-center p-8 text-rose-300">
+            Could not calibrate this page: {templateError} Go back to check the scan resolution and orientation.
           </div>
         )}
 
@@ -651,7 +660,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                 )}
               </div>
               <span className="font-mono text-slate-500">
-                Canonical Deskewed Scan: 4800 × 6840 px (600 DPI)
+                Calibration Template: 4800 × 6840 px (from a 600 DPI scan)
               </span>
             </div>
           </div>
