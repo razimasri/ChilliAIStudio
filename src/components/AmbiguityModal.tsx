@@ -9,6 +9,8 @@ interface AmbiguityModalProps {
   onResolve: (choice: string) => void;
   onBack?: () => void;
   onCancel?: () => void;
+  onNext?: () => void;
+  backgroundStatus?: string;
 }
 export function AmbiguityModal({
   item,
@@ -18,18 +20,16 @@ export function AmbiguityModal({
   onResolve,
   onBack,
   onCancel,
+  onNext,
+  backgroundStatus,
 }: AmbiguityModalProps) {
-  const [choice, setChoice] = useState<string | null>(null);
+  const choice = item.currentResponse;
   const [zoom, setZoom] = useState(1);
-  useEffect(() => {
-    setChoice(item.currentResponse || null);
-    setZoom(1);
-  }, [
-    currentIndex,
-    item.studentIndex,
-    item.questionNumber,
-    item.currentResponse,
-  ]);
+  useEffect(
+    () => setZoom(1),
+    [currentIndex, item.studentIndex, item.questionNumber],
+  );
+  const choose = (value: string) => onResolve(value);
   const letters = Array.from(
     { length: item.choicesCount || optionsCount },
     (_, i) => String.fromCharCode(65 + i),
@@ -39,7 +39,7 @@ export function AmbiguityModal({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-amber-300">
-            Answer review · {currentIndex + 1} of {totalCount}
+            Answer review · {currentIndex + 1} of {totalCount} available
           </p>
           <h2 id="review-title" className="text-xl font-bold">
             {item.studentName} · Question {item.questionNumber}
@@ -54,9 +54,13 @@ export function AmbiguityModal({
           </button>
         )}
       </div>
+      <p role="status" className="text-sm text-emerald-300">
+        {backgroundStatus}
+      </p>
       <p className="text-sm text-[#b1a1a4]">
-        More than one answer was detected. Select your decision, then confirm.
-        Use Unclear if the intended answer cannot be determined.
+        Click or tap an answer on the scan or a letter below to save it and go
+        next. Previous lets you revise a decision. Use Unclear if you cannot
+        determine the intended answer.
       </p>
       <div
         className="flex justify-end items-center gap-2"
@@ -87,14 +91,47 @@ export function AmbiguityModal({
         aria-label="Scanned answer snippet"
       >
         {item.cropDataUrl ? (
-          <img
-            src={item.cropDataUrl}
-            alt={`Question ${item.questionNumber} snippet`}
-            className="max-w-none h-auto"
-            style={{ width: `${zoom * 100}%` }}
-          />
+          <div className="relative" style={{ width: `${zoom * 100}%` }}>
+            <img
+              src={item.cropDataUrl}
+              alt={`Question ${item.questionNumber} snippet`}
+              className="block w-full max-w-none h-auto"
+            />
+            <div
+              className="absolute inset-0"
+              role="group"
+              aria-label="Choose an answer on the scan"
+            >
+              {(
+                item.answerRegions ||
+                letters.map((letter, index) => ({
+                  letter,
+                  left: index / letters.length,
+                  width: 1 / letters.length,
+                }))
+              ).map((region) => (
+                <button
+                  key={region.letter}
+                  aria-label={`Choose ${region.letter} on scan`}
+                  aria-pressed={choice === region.letter}
+                  onClick={() => choose(region.letter)}
+                  className="absolute inset-y-0 bg-black/0 hover:bg-black/30 focus-visible:bg-black/30 active:bg-black/40 transition-colors"
+                  style={{
+                    left: `${region.left * 100}%`,
+                    width: `${region.width * 100}%`,
+                  }}
+                >
+                  <span className="absolute bottom-0 inset-x-0 bg-black/65 text-white text-xs py-0.5">
+                    {region.letter}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         ) : (
-          <p className="text-black text-sm">No snippet available.</p>
+          <p className="text-black text-sm">
+            No snippet available. Use the letter buttons below.
+          </p>
         )}
       </div>
       <div
@@ -107,7 +144,7 @@ export function AmbiguityModal({
           <button
             key={letter}
             aria-pressed={choice === letter}
-            onClick={() => setChoice(letter)}
+            onClick={() => choose(letter)}
             className={`min-h-12 rounded-xl font-bold text-lg border ${choice === letter ? 'bg-[#8c1529] border-white' : 'bg-[#571622] border-[#8c1529]'}`}
           >
             {letter}
@@ -119,35 +156,31 @@ export function AmbiguityModal({
           <button
             key={value}
             aria-pressed={choice === value}
-            onClick={() => setChoice(value)}
+            onClick={() => choose(value)}
             className={`min-h-12 rounded-xl border text-sm ${choice === value ? 'bg-[#8c1529] border-white' : 'bg-[#18090b] border-[#571622]'}`}
           >
             {value === 'Blank' ? 'Blank (no mark)' : value}
           </button>
         ))}
       </div>
-      <p role="status" className="text-sm text-[#b1a1a4]">
-        {choice
-          ? `Selected: ${choice}. Confirm to save this decision.`
-          : 'Choose an answer above.'}
-      </p>
       <div className="flex justify-between gap-3">
         <button
-          onClick={onBack}
+          onClick={() => {
+            onBack?.();
+          }}
           disabled={!onBack || currentIndex === 0}
           className="min-h-12 px-4 rounded-xl bg-[#571622] disabled:opacity-40"
         >
-          Back
+          Previous
         </button>
-        <button
-          disabled={!choice}
-          onClick={() => choice && onResolve(choice)}
-          className="min-h-12 px-4 rounded-xl bg-[#8c1529] font-bold disabled:opacity-40"
-        >
-          {currentIndex + 1 === totalCount
-            ? 'Confirm & finish'
-            : 'Confirm & next'}
-        </button>
+        {choice && (
+          <button
+            onClick={onNext}
+            className="min-h-12 px-4 rounded-xl bg-[#8c1529]"
+          >
+            Next
+          </button>
+        )}
       </div>
     </Dialog>
   );

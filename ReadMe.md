@@ -25,9 +25,11 @@ zoom buttons/Fit to change its display scale. Draw around one clean empty box,
 wait for Empty box ready, then choose Mark Exams. These controls change display
 and selection only; MCQ detection and grading are unchanged.
 
-For ambiguous answers, choose a response and confirm. Back revisits previous
-decisions before the last confirmation; Cancel review returns to setup. Snippet
-zoom helps inspect marks. Results open on Overall statistics. Student scores
+For ambiguous answers, click/tap the answer on the snippet or choose its letter,
+Blank or Unclear. The choice saves and advances immediately; Previous revisits
+a decision. Review starts as completed pages become available while marking
+continues. Final results keep input order. When all pages and corrections are ready, choose View
+results. Cancel review returns to setup. Snippet zoom helps inspect marks. Results open on Overall statistics. Student scores
 and Marked sheets are separate tabs; per-student PNG/print controls are in the
 student card, and ZIP/CSV exports are in the results header. Marked sheets appear
 before the question breakdown on narrow screens and include zoom/Fit controls.
@@ -238,8 +240,8 @@ conservative cap: each worker owns an independent OpenCV/WASM heap plus large
 Calibration remains on the interface thread. Full PDF rasterization remains
 serial, and supplies only the next input for each available marking worker.
 
-Results and review prompts keep input/student order even when pages finish out
-of order. Progress counts completed pages and displays each page's actual state.
+Results keep input/student order even when pages finish out of order. Review
+prompts arrive as completed pages become available; their history stays stable. Progress counts completed pages and displays each page's actual state.
 Cancel marking, navigation, and page failures terminate the pool, including
 synchronous native CV work, and discard partial result images. A failed page is
 reported rather than assigned an invented score. Workers are released after the
@@ -256,3 +258,18 @@ production worker/chunk URLs as well. `test:geometry` also compares worker versu
 main-thread recognition on the first real IB and IGCSE sample pages. Startup and
 memory overhead can outweigh parallelism for small batches; this is not a claim
 of a fixed speed multiplier on every device.
+
+
+### Birdseye live-review refinements
+
+Calibration preparation shows an activity spinner and the current stage. A small
+animated rectangle demonstrates question-area dragging. Empty-box selection
+opens close up; Box view restores that scale and Fit shows the whole crop. Roomy
+selections snap to a detected box before the original set_box measurement runs;
+no fabricated contours or grading thresholds are used. Blank selections and
+multiple boxes without a unique centred target are rejected.
+
+Personal files replace a loaded sample and clear its names and answer key.
+Adding more files to an existing personal exam preserves its entered key.
+Mark Another Exam starts a fresh setup with empty names/key. ZIP/CSV output is
+still generated from finalized responses, after all marking and review finish.

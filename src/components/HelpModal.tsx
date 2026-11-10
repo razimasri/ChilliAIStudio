@@ -58,16 +58,18 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
         </li>
         <li>
           <strong className="text-white">Select one empty box.</strong> In Draw
-          mode, drag a snug rectangle around one clean, unmarked answer box.
-          Wait for “Empty box ready”, then choose “Mark Exams”. If selection
-          fails, zoom in and try another empty box.
+          mode, drag around one clean, unmarked answer box. A little surrounding
+          space is fine; the outline snaps to the box. Box view opens close up;
+          Fit shows the whole grid. Wait for “Empty box ready”, then choose
+          “Mark Exams”. If selection fails, zoom in and try another empty box.
         </li>
         <li>
           <strong className="text-white">Review ambiguous answers.</strong>{' '}
-          Select the intended answer, Blank, or Unclear, then confirm to move
-          on. Back lets you revisit earlier decisions before the last
-          confirmation. Zoom the snippet if needed. Cancel review returns to
-          setup.
+          Review starts as pages become available while marking continues. Click
+          or tap an answer on the scan, or choose its letter, Blank or Unclear.
+          Your choice saves and goes next immediately. Previous revisits a
+          decision. When all pages and corrections are ready, choose View
+          results. Cancel review returns to setup.
         </li>
         <li>
           <strong className="text-white">Review and export.</strong> Results

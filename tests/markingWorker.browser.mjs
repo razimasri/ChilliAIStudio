@@ -250,6 +250,7 @@ try {
       if (active.size) ticksDuringProcessing++;
     }, 20);
     const start = performance.now();
+    const streamed=[];let returned=false;
     const results = await markBatch(
       files,
       ["One", "Two", "Three"],
@@ -264,7 +265,10 @@ try {
         maxActive = Math.max(maxActive, active.size);
       },
       2,
+      result=>{check(!returned,"Page callback arrived after batch returned");streamed.push(result.index);},
     );
+    returned=true;
+    check(streamed.length===3&&new Set(streamed).size===3,"Each completed page must stream exactly once");
     clearInterval(timer);
     check(
       livingWorkers.size === 0,

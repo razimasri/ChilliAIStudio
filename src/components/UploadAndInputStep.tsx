@@ -73,7 +73,11 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
         });
         allLoaded.push(...loaded);
       }
-      onFilesChange([...files, ...allLoaded]);
+      if (files.some((page) => page.isSample)) {
+        onStudentNamesChange('');
+        onAnswerKeyChange('');
+        onFilesChange(allLoaded);
+      } else onFilesChange([...files, ...allLoaded]);
 
       setPdfProgress((prev) =>
         prev
@@ -171,7 +175,7 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
         setPdfProgress(info);
       });
 
-      onFilesChange(loadedPages);
+      onFilesChange(loadedPages.map((page) => ({ ...page, isSample: true })));
 
       const sampleNames = [
         'Tanner Moore',
@@ -251,6 +255,7 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
   const clearPages = () => {
     onFilesChange([]);
     onStudentNamesChange('');
+    if (files.some((page) => page.isSample)) onAnswerKeyChange('');
   };
   const handleFormContinue = () => {
     if (!ready) return;
@@ -366,12 +371,18 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
             {!files.length && <Upload className="w-12 h-12 text-[#f3b0ba]" />}
             <div>
               <h2 className="font-bold">
-                {files.length ? 'Add more scans' : 'Choose PDF or images'}
+                {files.some((page) => page.isSample)
+                  ? 'Load your own exam'
+                  : files.length
+                    ? 'Add more scans'
+                    : 'Choose PDF or images'}
               </h2>
               <p className="text-sm text-[#b1a1a4] mt-1">
-                {files.length
-                  ? 'New pages are added at the end.'
-                  : 'Select files or drop them here. Scan at 600 DPI where possible.'}
+                {files.some((page) => page.isSample)
+                  ? 'Replaces the sample and clears its names and answer key.'
+                  : files.length
+                    ? 'New pages are added at the end.'
+                    : 'Select files or drop them here. Scan at 600 DPI where possible.'}
               </p>
             </div>
             <button
@@ -379,7 +390,11 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
               disabled={isLoadingFile}
               className="min-h-11 px-4 rounded-xl bg-[#8c1529] font-semibold"
             >
-              {files.length ? 'Add files' : 'Choose files'}
+              {files.some((page) => page.isSample)
+                ? 'Choose my exam'
+                : files.length
+                  ? 'Add files'
+                  : 'Choose files'}
             </button>
           </div>
           {files.length > 0 && (

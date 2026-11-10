@@ -1,3 +1,4 @@
+import { measureSelectedBox } from '../utils/calibrationSelection';
 import { useCanvasPointer } from '../utils/useCanvasPointer';
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { CalibrationParams, ExamFile } from '../types';
@@ -45,6 +46,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 
   // Zoom controls for Step 2
   const [zoomLevel, setZoomLevel] = useState<number>(1.5);
+  const [preparation, setPreparation] = useState('Loading the marking engine…');
   const [isSnapping, setIsSnapping] = useState<boolean>(false);
   const [snapStatus, setSnapStatus] = useState<string | null>(null);
 
@@ -80,7 +82,10 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       setCanonicalTemplateDataUrl(null);
       setHasValidBox(false);
       try {
+        setPreparation('Loading the marking engine…');
         const cv = await getCV();
+        if (isCancelled) return;
+        setPreparation('Rendering the first page at 600 DPI…');
         let rotatedMat: any = null;
         const raster = await getExamPage(
           firstFile,
@@ -93,6 +98,8 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         } finally {
           raster.release();
         }
+        setPreparation('Aligning the first page…');
+        await new Promise((resolve) => setTimeout(resolve, 0));
         let sheetRect: [number, number, number, number];
         try {
           const rotRes = rotation(cv, rawMat);
@@ -235,6 +242,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 
     if (qw <= 20 || qh <= 20 || !canonicalTemplateDataUrl) return;
 
+    setQAreaImage(null);
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
@@ -256,9 +264,14 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         }
       }
     };
+    img.onerror = () =>
+      setTemplateError(
+        'Could not prepare the selected grid. Go back and select the area again.',
+      );
     img.src = canonicalTemplateDataUrl;
     return () => {
       img.onload = null;
+      img.onerror = null;
     };
   }, [canonicalTemplateDataUrl, params.x1, params.y1, params.x2, params.y2]);
 
@@ -401,7 +414,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 
         let boxResult: ReturnType<typeof set_box>;
         try {
-          boxResult = set_box(
+          boxResult = measureSelectedBox(
             cv,
             tMat,
             pageBoxX1,
@@ -486,6 +499,14 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   const changeStep = (next: 'qArea' | 'sampleBox') => {
     setTool('draw');
     setStep(next);
+    if (next === 'sampleBox') {
+      const scale = Math.min(
+        1,
+        (workspace.width - 32) / Math.max(1, params.x2 - params.x1),
+        (workspace.height - 32) / Math.max(1, params.y2 - params.y1),
+      );
+      setZoomLevel(Math.min(32, Math.max(1, 1 / scale)));
+    }
     if (workspaceRef.current) {
       workspaceRef.current.scrollLeft = 0;
       workspaceRef.current.scrollTop = 0;
@@ -533,7 +554,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         <p id="canvas-help" className="text-sm text-[#d8c7ca]">
           {step === 'qArea'
             ? 'Draw a rectangle around the complete answer grid, then choose Next.'
-            : 'Zoom in and draw a snug rectangle around one clean, unmarked answer box.'}
+            : 'Draw around one empty box. A little surrounding space is fine; the outline snaps to the box.'}
         </p>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div
@@ -570,12 +591,12 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
               −
             </button>
             <span className="min-w-12 text-sm text-center">
-              {Math.round(zoom * 100)}%
+              {Math.round(fit * zoom * 100)}%
             </span>
             <button
               title="Zoom In"
               aria-label="Zoom in"
-              onClick={() => setZoom((z) => Math.min(12, z + 0.25))}
+              onClick={() => setZoom((z) => Math.min(32, z + 0.5))}
               className="min-h-11 min-w-11 rounded-lg bg-[#18090b]"
             >
               +
@@ -586,6 +607,14 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
             >
               Fit
             </button>
+            {step === 'sampleBox' && (
+              <button
+                onClick={() => changeStep('sampleBox')}
+                className="min-h-11 px-3 rounded-lg bg-[#18090b]"
+              >
+                Box view
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -594,9 +623,18 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         className="flex-1 min-h-0 overflow-auto overscroll-contain relative"
         aria-busy={isInitializingTemplate || isSnapping}
       >
-        {isInitializingTemplate ? (
+        {isInitializingTemplate ||
+        (step === 'sampleBox' && !qAreaImage && !templateError) ? (
           <div role="status" className="p-8 text-center">
-            Preparing the first page for calibration…
+            <span
+              className="inline-block w-8 h-8 border-4 border-[#571622] border-t-[#f3b0ba] rounded-full animate-spin mb-3"
+              aria-hidden="true"
+            />
+            <p>
+              {step === 'sampleBox' && !isInitializingTemplate
+                ? 'Preparing the empty-box view…'
+                : preparation}
+            </p>
           </div>
         ) : templateError ? (
           <div role="alert" className="p-8 text-rose-300">
@@ -605,6 +643,32 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
           </div>
         ) : (
           <div className="min-h-full min-w-full w-max p-4 flex">
+            {step === 'qArea' && params.x2 <= params.x1 && !isDrawingQ && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                <div className="bg-[#240c10]/95 border border-[#8c1529] rounded-xl p-4 text-center shadow-xl">
+                  <svg
+                    viewBox="0 0 100 60"
+                    className="w-28 h-16 mx-auto"
+                    aria-hidden="true"
+                  >
+                    <rect
+                      x="8"
+                      y="8"
+                      width="84"
+                      height="44"
+                      rx="4"
+                      fill="none"
+                      stroke="#f3b0ba"
+                      strokeWidth="3"
+                      strokeDasharray="12 5"
+                      className="selection-demo"
+                    />
+                    <circle cx="92" cy="52" r="5" fill="#f3b0ba" />
+                  </svg>
+                  <p className="text-sm">Drag to frame the answer grid</p>
+                </div>
+              </div>
+            )}
             <div
               className="shrink-0 m-auto shadow-xl"
               style={{

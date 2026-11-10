@@ -148,17 +148,95 @@ try {
         .length,
       30,
     );
+    const personalPng = await page.evaluate(() => {
+      const c = document.createElement('canvas');
+      c.width = c.height = 20;
+      return c.toDataURL('image/png').split(',')[1];
+    });
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles({
+        name: 'personal.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from(personalPng, 'base64'),
+      });
+    await page.waitForFunction(
+      () => document.querySelectorAll('button[title="Remove"]').length === 1,
+    );
+    assert.equal(
+      await page.getByLabel('Student names', { exact: false }).inputValue(),
+      '',
+      'Personal files must clear sample names',
+    );
+    assert.equal(
+      await page.getByLabel('Answer key', { exact: true }).inputValue(),
+      '',
+      'Personal files must clear the sample scheme',
+    );
+    assert.equal(await proceed.isDisabled(), true);
+    await page.getByLabel('Answer key', { exact: true }).fill('ABC');
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles({
+        name: 'more-personal.png',
+        mimeType: 'image/png',
+        buffer: Buffer.from(personalPng, 'base64'),
+      });
+    await page.waitForFunction(
+      () => document.querySelectorAll('button[title="Remove"]').length === 2,
+    );
+    assert.equal(
+      await page.getByLabel('Answer key', { exact: true }).inputValue(),
+      'ABC',
+      'Appending personal pages must preserve the personal key',
+    );
     await page.close();
   }
   console.log(
     'interface: desktop/tablet/phone setup, persistent action, readiness, name alignment, sample keys, guide/focus and preview dialogs passed',
   );
+  const desktopReview = await browser.newPage({
+    viewport: { width: 1100, height: 800 },
+  });
+  await desktopReview.goto(origin + 'tests/fixtures/liveReview.html');
+  const region = desktopReview.getByRole('button', {
+    name: 'Choose B on scan',
+    exact: true,
+  });
+  await region.waitFor();
+  assert.equal(
+    await desktopReview
+      .getByRole('group', { name: 'Choose an answer on the scan' })
+      .getByRole('button')
+      .count(),
+    4,
+  );
+  const beforeHover = await region.evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
+  await region.hover();
+  await desktopReview.waitForTimeout(200);
+  assert.notEqual(
+    await region.evaluate((el) => getComputedStyle(el).backgroundColor),
+    beforeHover,
+    'Hover must darken the answer region',
+  );
+  await region.click();
+  assert.deepEqual(
+    await desktopReview.evaluate(() => window.selections),
+    ['B'],
+    'Clicking the scanned answer should save immediately',
+  );
+  await desktopReview.close();
   const page = await browser.newPage({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
     reducedMotion: 'reduce',
   });
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, 'deviceMemory', { get: () => 4 }),
+  );
   page.on('pageerror', (error) => console.error(error));
   await page.goto(origin);
   const data = await page.evaluate(() => {
@@ -212,7 +290,13 @@ try {
   await page.getByLabel('Answer key', { exact: true }).fill('AAAAAAAAAAAA');
   await page.getByRole('button', { name: 'Continue to calibration' }).click();
   const area = page.getByLabel('Question area selection', { exact: true });
+  await page
+    .getByText('Loading the marking engine…', { exact: true })
+    .waitFor();
   await area.waitFor({ timeout: 120000 });
+  await page
+    .getByText('Drag to frame the answer grid', { exact: true })
+    .waitFor();
   assert.equal(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -325,9 +409,61 @@ try {
     pointerType: 'pen',
   });
   assert.equal(await next.isEnabled(), true, 'Pen/reverse selection failed');
+  const tolerant = await page.evaluate(async (data) => {
+    const { getCV } = await import('/src/utils/cvLoader.ts');
+    const cv = await getCV();
+    const engine = await import('/src/utils/omrEngine.ts');
+    const { measureSelectedBox } =
+      await import('/src/utils/calibrationSelection.ts');
+    const mat = await engine.renderScanMat(cv, 'data:image/png;base64,' + data);
+    try {
+      const tight = engine.set_box(cv, mat, 997, 1297, 1123, 1403);
+      let strictRejected = false;
+      try {
+        engine.set_box(cv, mat, 940, 1240, 1180, 1460);
+      } catch {
+        strictRejected = true;
+      }
+      const roomy = measureSelectedBox(cv, mat, 940, 1240, 1180, 1460);
+      let rejectsBlank = false,
+        rejectsMultiple = false;
+      try {
+        measureSelectedBox(cv, mat, 400, 400, 600, 600);
+      } catch {
+        rejectsBlank = true;
+      }
+      try {
+        measureSelectedBox(cv, mat, 640, 1240, 1180, 1460);
+      } catch {
+        rejectsMultiple = true;
+      }
+      return {
+        strictRejected,
+        rejectsBlank,
+        rejectsMultiple,
+        tight: [tight.w, tight.h],
+        roomy: [roomy.w, roomy.h],
+        inner: roomy.inner.length,
+      };
+    } finally {
+      mat.delete();
+    }
+  }, data);
+  assert.equal(tolerant.strictRejected, true);
+  assert.equal(tolerant.rejectsBlank, true);
+  assert.equal(tolerant.rejectsMultiple, true);
+  assert.ok(
+    tolerant.roomy.every((v, i) => Math.abs(v - tolerant.tight[i]) <= 4) &&
+      tolerant.inner > 2,
+    'Roomy selection must measure the real box',
+  );
   await next.click();
   const box = page.getByLabel('Empty box selection', { exact: true });
   await box.waitFor();
+  assert.ok(
+    (await box.boundingBox()).width > 1000,
+    'Empty-box view should open close up',
+  );
   await page.getByRole('button', { name: 'Fit', exact: true }).click();
   for (let i = 0; i < 12; i++)
     await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
@@ -355,8 +491,55 @@ try {
     viewport.scrollLeft = 0;
     viewport.scrollTop = 0;
   });
-  // Pick a clean box: first row, second column, using coordinates local to the selected crop.
-  await touchDrag(box, [997 - 500, 1297 - 1100], [1123 - 500, 1403 - 1100]);
+  // Use the visible crop's real box location after responsive layout/pen selection.
+  const emptyBox = await box.evaluate(async (canvas) => {
+    const { getCV } = await import('/src/utils/cvLoader.ts');
+    const cv = await getCV();
+    const { get_thresh } = await import('/src/utils/omrEngine.ts');
+    const mat = cv.imread(canvas),
+      threshold = get_thresh(cv, mat),
+      contours = new cv.MatVector(),
+      hierarchy = new cv.Mat();
+    try {
+      cv.findContours(
+        threshold,
+        contours,
+        hierarchy,
+        cv.RETR_EXTERNAL,
+        cv.CHAIN_APPROX_SIMPLE,
+      );
+      const candidates = [];
+      for (let i = 0; i < contours.size(); i++) {
+        const c = contours.get(i);
+        const b = cv.boundingRect(c);
+        if (
+          b.width > 90 &&
+          b.width < 160 &&
+          b.height > 70 &&
+          b.height < 150 &&
+          b.y < 400 &&
+          b.x < 1100
+        )
+          candidates.push(b);
+        c.delete();
+      }
+      candidates.sort(
+        (a, b) => Math.round(a.y / 20) - Math.round(b.y / 20) || a.x - b.x,
+      );
+      return candidates[1];
+    } finally {
+      mat.delete();
+      threshold.delete();
+      contours.delete();
+      hierarchy.delete();
+    }
+  });
+  assert.ok(emptyBox, 'Visible crop must contain an empty answer box');
+  await touchDrag(
+    box,
+    [emptyBox.x - 20, emptyBox.y - 20],
+    [emptyBox.x + emptyBox.width + 20, emptyBox.y + emptyBox.height + 20],
+  );
   const mark = page.getByRole('button', { name: 'Mark Exams', exact: true });
   await mark.waitFor();
   await page.waitForFunction(
@@ -375,31 +558,49 @@ try {
   await review
     .getByRole('heading', { name: /Student 01/ })
     .waitFor({ timeout: 120000 });
-  await review.getByRole('button', { name: 'A', exact: true }).click();
-  await review.getByRole('heading', { name: /Student 01/ }).waitFor();
   await review
-    .getByRole('button', { name: 'Confirm & next', exact: true })
-    .click();
-  await review.getByRole('heading', { name: /Student 02/ }).waitFor();
-  await review.getByRole('button', { name: 'Back', exact: true }).click();
+    .getByText('Background marking: 1 of 2 pages complete', { exact: true })
+    .waitFor();
+  assert.equal(
+    await review.getByRole('button', { name: /Confirm/ }).count(),
+    0,
+  );
+  const direct = review.getByRole('button', {
+    name: 'Choose A on scan',
+    exact: true,
+  });
+  await direct.click();
+  await review
+    .getByRole('heading', { name: /Student 02/ })
+    .waitFor({ timeout: 120000 });
+  await review.getByRole('button', { name: 'Previous', exact: true }).click();
   await review.getByRole('heading', { name: /Student 01/ }).waitFor();
   assert.equal(
     await review
       .getByRole('button', { name: 'A', exact: true })
       .getAttribute('aria-pressed'),
     'true',
-    'Back must restore the saved decision',
   );
   await review
     .getByRole('button', { name: 'Blank (no mark)', exact: true })
     .click();
-  await review
-    .getByRole('button', { name: 'Confirm & next', exact: true })
-    .click();
+  await review.getByRole('heading', { name: /Student 02/ }).waitFor();
   await review.getByRole('button', { name: 'Unclear', exact: true }).click();
-  await review
-    .getByRole('button', { name: 'Confirm & finish', exact: true })
+  await page
+    .getByRole('button', { name: 'View results', exact: true })
+    .waitFor({ timeout: 120000 });
+  await page
+    .getByRole('button', { name: 'Previous correction', exact: true })
     .click();
+  await review.getByRole('heading', { name: /Student 02/ }).waitFor();
+  assert.equal(
+    await review
+      .getByRole('button', { name: 'Unclear', exact: true })
+      .getAttribute('aria-pressed'),
+    'true',
+  );
+  await review.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.getByRole('button', { name: 'View results', exact: true }).click();
   await page
     .getByRole('heading', { name: 'Class Overview & Question Analysis' })
     .waitFor({ timeout: 120000 });
@@ -454,6 +655,20 @@ try {
     path: '/workspace/work/birdseye-results-mobile.png',
     fullPage: true,
   });
+  await page
+    .getByRole('button', { name: 'Mark Another Exam', exact: true })
+    .click();
+  await page
+    .getByRole('heading', { name: 'Choose PDF or images', exact: true })
+    .waitFor();
+  assert.equal(
+    await page.getByLabel('Student names', { exact: false }).inputValue(),
+    '',
+  );
+  assert.equal(
+    await page.getByLabel('Answer key', { exact: true }).inputValue(),
+    '',
+  );
   console.log(
     'interface: actual touch/mouse/pen selection, cancellation, Draw/Pan, empty-box calibration, parallel marking, review Back/revision, CSV and mobile sheet flow passed',
   );

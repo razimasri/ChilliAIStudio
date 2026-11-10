@@ -1,7 +1,7 @@
-import type { CalibrationParams, ExamFile, StudentResult } from "../types";
-import { getExamPage } from "./pdfProcessor";
-import { releaseResultImages } from "./imageStore";
-import { MarkingClient } from "./markingClient";
+import type { CalibrationParams, ExamFile, StudentResult } from '../types';
+import { getExamPage } from './pdfProcessor';
+import { releaseResultImages } from './imageStore';
+import { MarkingClient } from './markingClient';
 export function markingWorkerCount(
   pageCount: number,
   hardware: { hardwareConcurrency?: number; deviceMemory?: number } = navigator,
@@ -9,7 +9,10 @@ export function markingWorkerCount(
   // Each 600-DPI scan and independent OpenCV heap is large. Unknown memory is conservative.
   return Math.min(
     Math.max(1, pageCount),
-    (hardware.deviceMemory ?? 0) >= 8 && (hardware.hardwareConcurrency ?? 0) >= 4 ? 2 : 1,
+    (hardware.deviceMemory ?? 0) >= 8 &&
+      (hardware.hardwareConcurrency ?? 0) >= 4
+      ? 2
+      : 1,
   );
 }
 export interface MarkingProgress {
@@ -27,9 +30,13 @@ export async function markBatch(
   signal: AbortSignal,
   progress: (state: MarkingProgress) => void,
   workerCount = markingWorkerCount(files.length),
+  onResult?: (result: StudentResult) => void,
 ): Promise<StudentResult[]> {
   signal.throwIfAborted();
-  const count = Math.min(files.length, Math.max(1, Math.min(2, Math.floor(workerCount) || 1)));
+  const count = Math.min(
+    files.length,
+    Math.max(1, Math.min(2, Math.floor(workerCount) || 1)),
+  );
   const controller = new AbortController(),
     clients: MarkingClient[] = [],
     results: StudentResult[] = [];
@@ -42,7 +49,7 @@ export async function markBatch(
     controller.abort();
     clients.forEach((client) => client.dispose());
   };
-  signal.addEventListener("abort", cancel, { once: true });
+  signal.addEventListener('abort', cancel, { once: true });
   const jobs: Promise<void>[] = [];
   try {
     for (let slot = 0; slot < count; slot++) clients.push(new MarkingClient());
@@ -53,7 +60,7 @@ export async function markBatch(
             controller.signal.throwIfAborted();
             const index = next++,
               name =
-                names[index] || `Student ${String(index + 1).padStart(2, "0")}`;
+                names[index] || `Student ${String(index + 1).padStart(2, '0')}`;
             active.add(index);
             const report = (message: string) =>
               progress({
@@ -65,7 +72,7 @@ export async function markBatch(
                 message: `Page ${index + 1} (${name}): ${message}`,
               });
             try {
-              report("Preparing full-resolution page…");
+              report('Preparing full-resolution page…');
               // Only each available worker's current input is prepared, never a whole batch.
               const raster = await getExamPage(
                 files[index],
@@ -78,7 +85,7 @@ export async function markBatch(
                   signal: controller.signal,
                 });
                 if (!response.ok)
-                  throw new Error("Could not read page raster.");
+                  throw new Error('Could not read page raster.');
                 input = await response.blob();
               } finally {
                 raster.release();
@@ -97,10 +104,11 @@ export async function markBatch(
               }
               result.originalDataUrl = files[index].dataUrl;
               results[index] = result;
+              onResult?.(result);
               completed++;
               active.delete(index);
               done.add(index);
-              report("Complete");
+              report('Complete');
             } catch (error) {
               if (!controller.signal.aborted) {
                 failure = new Error(
@@ -116,8 +124,8 @@ export async function markBatch(
     const settled = await Promise.allSettled(jobs);
     signal.throwIfAborted();
     if (failure) throw failure;
-    const rejected = settled.find((result) => result.status === "rejected");
-    if (rejected?.status === "rejected") throw rejected.reason;
+    const rejected = settled.find((result) => result.status === 'rejected');
+    if (rejected?.status === 'rejected') throw rejected.reason;
     return results;
   } catch (error) {
     cancel();
@@ -125,7 +133,7 @@ export async function markBatch(
     releaseResultImages(results.filter(Boolean));
     throw error;
   } finally {
-    signal.removeEventListener("abort", cancel);
+    signal.removeEventListener('abort', cancel);
     clients.forEach((client) => client.dispose());
   }
 }

@@ -9,6 +9,7 @@ export interface ExamFile {
   size: number;
   dataUrl: string; // Display placeholder for deferred files; legacy images remain supported
   sourceFile?: File;
+  isSample?: boolean;
   sourceKind?: 'pdf' | 'image';
   rotation: number;
   pageIndex: number;
@@ -60,6 +61,7 @@ export interface AmbiguityResolutionItem {
   currentResponse: string | false;
   detectedLetters: string[];
   choicesCount: number;
+  answerRegions?: {letter:string;left:number;width:number}[];
 }
 
 export interface CalibrationParams {
