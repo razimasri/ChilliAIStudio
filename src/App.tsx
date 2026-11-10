@@ -12,6 +12,7 @@ import {
   StudentResult,
   AmbiguityResolutionItem,
   QuestionStat,
+  MarkingConcurrency,
 } from './types';
 import { releaseUnusedSources } from './utils/pdfProcessor';
 import {
@@ -86,6 +87,8 @@ export function App() {
 
   // Statistics
   const [examStats, setExamStats] = useState<QuestionStat[]>([]);
+  const [markingConcurrency, setMarkingConcurrency] =
+    useState<MarkingConcurrency>('auto');
   const [showHelp, setShowHelp] = useState<boolean>(false);
 
   // Parse candidate names list matching Python clean_names
@@ -181,7 +184,7 @@ export function App() {
             `${progress.workers} background worker${progress.workers === 1 ? '' : 's'} · ${progress.message}`,
           );
         },
-        undefined,
+        markingConcurrency === 'auto' ? undefined : markingConcurrency,
         (result) => {
           if (sessionRef.current !== session || controller.signal.aborted)
             return;
@@ -374,6 +377,8 @@ export function App() {
             onAnswerKeyChange={setAnswerKeyText}
             params={params}
             onParamsChange={setParams}
+            markingConcurrency={markingConcurrency}
+            onMarkingConcurrencyChange={setMarkingConcurrency}
             onContinue={() => setCurrentStep(2)}
           />
         )}

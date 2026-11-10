@@ -138,6 +138,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 export interface PageImage {
   url: string;
   release: () => void;
+  bitmap?: ImageBitmap;
 }
 /** Return a disposable page image. Full rasters use exactly the existing 600-DPI render settings. */
 export function getExamPage(
@@ -145,9 +146,34 @@ export function getExamPage(
   previewEdge?: number,
   signal?: AbortSignal,
 ): Promise<PageImage> {
+  return renderPage(file, previewEdge, signal, false);
+}
+/** Disposable native pixels for marking: no intermediate PNG encode/decode. */
+export function getMarkingPage(
+  file: ExamFile,
+  signal?: AbortSignal,
+): Promise<PageImage> {
+  return renderPage(file, undefined, signal, true);
+}
+function renderPage(
+  file: ExamFile,
+  previewEdge: number | undefined,
+  signal: AbortSignal | undefined,
+  asBitmap: boolean,
+): Promise<PageImage> {
   return queuePage(
     async () => {
-      if (!file.sourceFile) return { url: file.dataUrl, release: () => {} };
+      if (!file.sourceFile) {
+        if (!asBitmap) return { url: file.dataUrl, release: () => {} };
+        const response = await fetch(file.dataUrl, { signal });
+        if (!response.ok) throw new Error("Could not read page image.");
+        const bitmap = await createImageBitmap(await response.blob());
+        if (signal?.aborted) {
+          bitmap.close();
+          signal.throwIfAborted();
+        }
+        return { url: file.dataUrl, bitmap, release: () => bitmap.close() };
+      }
       const thumbnailKey = `${file.id}:${file.rotation}:${previewEdge}`;
       const thumbnail = previewEdge && thumbnails.get(thumbnailKey);
       if (thumbnail) {
@@ -162,6 +188,14 @@ export function getExamPage(
         cached.page === file.pageIndex &&
         cached.rotation === file.rotation
       ) {
+        if (asBitmap) {
+          const bitmap = await createImageBitmap(cached.blob);
+          if (signal?.aborted) {
+            bitmap.close();
+            signal.throwIfAborted();
+          }
+          return { url: file.dataUrl, bitmap, release: () => bitmap.close() };
+        }
         const url = imageUrl(cached.blob);
         return { url, release: () => releaseImage(url) };
       }
@@ -224,6 +258,14 @@ export function getExamPage(
           context.rotate((file.rotation * Math.PI) / 180);
           context.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
           output = rotated;
+        }
+        if (asBitmap) {
+          const bitmap = await createImageBitmap(output);
+          if (signal?.aborted) {
+            bitmap.close();
+            signal.throwIfAborted();
+          }
+          return { url: file.dataUrl, bitmap, release: () => bitmap.close() };
         }
         const blob = await canvasBlob(output);
         signal?.throwIfAborted();

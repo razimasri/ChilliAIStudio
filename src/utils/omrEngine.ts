@@ -29,7 +29,7 @@ export function loadImageElement(dataUrl: string): Promise<HTMLImageElement> {
 /**
  * Decode a scan without changing its dimensions or orientation.
  */
-export async function renderScanMat(cv: any, dataUrl: string): Promise<any> {
+export async function renderScanMat(cv: any, dataUrl: string | ImageBitmap): Promise<any> {
   const raster = await readRaster(dataUrl);
   const canvas = createRasterCanvas(raster.width, raster.height);
   try {
@@ -1430,7 +1430,7 @@ export async function get_correction_crop(
  */
 export async function processStudentScan(
   cv: any,
-  scanDataUrl: string,
+  scanDataUrl: string | ImageBitmap,
   studentName: string,
   studentIndex: number,
   params: CalibrationParams,
@@ -1589,7 +1589,7 @@ export async function processStudentScan(
       questions: studentState.questions,
       responses: studentState.responses,
       annotatedDataUrl,
-      originalDataUrl: scanDataUrl,
+      originalDataUrl: typeof scanDataUrl === 'string' ? scanDataUrl : '',
       rawDeskewedDataUrl,
       hasAmbiguity,
       incomplete: studentState.incomplete,

@@ -59,6 +59,10 @@ self.onmessage = async (event: MessageEvent<MarkingRequest>) => {
     });
     return;
   }
+  const bitmap =
+    event.data.type === "mark" && event.data.input instanceof ImageBitmap
+      ? event.data.input
+      : undefined;
   busy = true;
   let cv: any;
   try {
@@ -68,7 +72,7 @@ self.onmessage = async (event: MessageEvent<MarkingRequest>) => {
     if (request.type === "mark") {
       const result = await processStudentScan(
         cv,
-        imageUrl(request.input),
+        request.input instanceof Blob ? imageUrl(request.input) : request.input,
         request.name,
         request.index,
         request.params,
@@ -86,6 +90,7 @@ self.onmessage = async (event: MessageEvent<MarkingRequest>) => {
   } catch (error) {
     send({ type: "error", message: decodeCVError(cv, error) });
   } finally {
+    bitmap?.close();
     releaseAllImages();
     busy = false;
   }

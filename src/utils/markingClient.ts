@@ -77,7 +77,12 @@ export class MarkingClient {
     return new Promise((resolve, reject) => {
       this.pending = { resolve, reject, progress };
       try {
-        this.worker.postMessage(request);
+        this.worker.postMessage(
+          request,
+          request.type === "mark" && request.input instanceof ImageBitmap
+            ? [request.input]
+            : [],
+        );
       } catch (error) {
         this.pending = undefined;
         reject(error);
@@ -85,7 +90,7 @@ export class MarkingClient {
     });
   }
   async mark(
-    input: Blob,
+    input: Blob | ImageBitmap,
     name: string,
     index: number,
     params: CalibrationParams,

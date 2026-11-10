@@ -107,3 +107,5 @@ export interface QuestionStat {
   correctCount: number;
   correctPercent: number;
 }
+
+export type MarkingConcurrency = 'auto' | 1 | 2 | 4;
