@@ -436,180 +436,115 @@ export function set_box(
   text_shift: [number, number];
   font_size: number;
 } {
-  const minX = Math.max(0, Math.min(box_x1, box_x2));
-  const minY = Math.max(0, Math.min(box_y1, box_y2));
-  const rawW = Math.abs(box_x2 - box_x1);
-  const rawH = Math.abs(box_y2 - box_y1);
-  const bw = Math.max(10, Math.min(image.cols - minX, rawW));
-  const bh = Math.max(10, Math.min(image.rows - minY, rawH));
+  const minX = Math.max(0, Math.floor(Math.min(box_x1, box_x2)));
+  const minY = Math.max(0, Math.floor(Math.min(box_y1, box_y2)));
+  const maxX = Math.min(image.cols, Math.floor(Math.max(box_x1, box_x2)));
+  const maxY = Math.min(image.rows, Math.floor(Math.max(box_y1, box_y2)));
+  const bw = maxX - minX;
+  const bh = maxY - minY;
+  if (bw <= 0 || bh <= 0) throw new Error('Select one empty answer box within the page.');
 
-  const roi = image.roi(new cv.Rect(minX, minY, bw, bh));
-  const clip = get_thresh(cv, roi, false);
-  let check_img: any = get_thresh(cv, roi, true);
-  roi.delete();
-
-  const outerCnts = new cv.MatVector();
-  const outerHier = new cv.Mat();
-  cv.findContours(clip, outerCnts, outerHier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-  clip.delete();
-  outerHier.delete();
-
-  let outer: any = null;
-  let outer_area = 0;
-
-  if (outerCnts.size() > 0) {
-    let bestIdx = 0;
-    let maxA = -1;
-    for (let i = 0; i < outerCnts.size(); i++) {
-      const c = outerCnts.get(i);
-      const a = cv.contourArea(c);
-      if (a > maxA) {
-        maxA = a;
-        bestIdx = i;
-      }
-      c.delete();
+  // Keep OpenCV's contour order, matching Python's contours[0]. Do not
+  // substitute a rectangle or a different contour when extraction fails.
+  const firstContour = (threshold: any): any => {
+    const contours = new cv.MatVector();
+    const hierarchy = new cv.Mat();
+    try {
+      cv.findContours(threshold, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      if (!contours.size()) throw new Error('No usable box contour found. Select one empty box tightly.');
+      return contours.get(0);
+    } finally {
+      contours.delete();
+      hierarchy.delete();
     }
-    outer = outerCnts.get(bestIdx);
-    outer_area = maxA;
-  } else {
-    // Clean rectangular fallback contour from user drag
-    outer = new cv.Mat.zeros(4, 1, cv.CV_32SC2);
-    outer.data32S[0] = 0;
-    outer.data32S[1] = 0;
-    outer.data32S[2] = bw;
-    outer.data32S[3] = 0;
-    outer.data32S[4] = bw;
-    outer.data32S[5] = bh;
-    outer.data32S[6] = 0;
-    outer.data32S[7] = bh;
-    outer_area = bw * bh;
-  }
-
-  let extra = 0;
-  let check_area = 0;
-  let check_outer: any = null;
-  let last_x1_e = minX;
-  let last_y1_e = minY;
-
-  while (Math.abs(check_area - outer_area) > 10 && extra < 25) {
-    outer_area = check_area;
-    const y1_e = Math.max(0, Math.floor(minY - extra));
-    const y2_e = Math.min(image.rows, Math.floor(minY + bh + extra * 2));
-    const x1_e = Math.max(0, Math.floor(minX - extra));
-    const x2_e = Math.min(image.cols, Math.floor(minX + bw + extra * 2));
-    last_x1_e = x1_e;
-    last_y1_e = y1_e;
-
-    const check_roi = image.roi(new cv.Rect(x1_e, y1_e, x2_e - x1_e, y2_e - y1_e));
-    if (check_img) check_img.delete();
-    check_img = get_thresh(cv, check_roi, true);
-    check_roi.delete();
-
-    const checkCnts = new cv.MatVector();
-    const checkHier = new cv.Mat();
-    cv.findContours(check_img, checkCnts, checkHier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-    if (checkCnts.size() > 0) {
-      let bestCheckIdx = 0;
-      let maxCheckArea = -1;
-      for (let i = 0; i < checkCnts.size(); i++) {
-        const c = checkCnts.get(i);
-        const a = cv.contourArea(c);
-        if (a > maxCheckArea) {
-          maxCheckArea = a;
-          bestCheckIdx = i;
-        }
-        c.delete();
-      }
-      if (check_outer) check_outer.delete();
-      check_outer = checkCnts.get(bestCheckIdx);
-      check_area = maxCheckArea;
-      outer.delete();
-      outer = check_outer.clone();
-    }
-    for (let i = 0; i < checkCnts.size(); i++) {
-      checkCnts.get(i).delete();
-    }
-    checkCnts.delete();
-    checkHier.delete();
-    extra += 1;
-  }
-
-  const bound = cv.boundingRect(outer);
-  const x = bound.x;
-  const y = bound.y;
-  const w = bound.width;
-  const h = bound.height;
-
-  // Shave outer border with black rectangle thickness w // 6 matching ChilliMark.py line 133
-  const strokeThickness = Math.max(1, Math.floor(w / 6));
-  const clipNot = new cv.Mat();
-  cv.bitwise_not(check_img, clipNot);
-
-  const drawVector = new cv.MatVector();
-  drawVector.push_back(outer);
-  cv.drawContours(clipNot, drawVector, -1, new cv.Scalar(0, 0, 0, 0), strokeThickness);
-  drawVector.delete();
-
-  // Clean rectangular outer contour matching user request
-  const halfW = Math.floor(w / 2);
-  const halfH = Math.floor(h / 2);
-  const outerPts: ContourPoint[] = [
-    { x: -halfW, y: -halfH },
-    { x: halfW, y: -halfH },
-    { x: halfW, y: halfH },
-    { x: -halfW, y: halfH },
-  ];
-
-  // Centered inner sampling cavity safely inset from printed borders
-  const innerHalfW = Math.max(10, Math.floor((w - 20) / 2));
-  const innerHalfH = Math.max(2, Math.floor((h - 16) / 2));
-  const innerPts: ContourPoint[] = [
-    { x: -innerHalfW, y: -innerHalfH },
-    { x: innerHalfW, y: -innerHalfH },
-    { x: innerHalfW, y: innerHalfH },
-    { x: -innerHalfW, y: innerHalfH },
-  ];
-  const innerArea = (innerHalfW * 2) * (innerHalfH * 2);
-
-  // Fill limit matching ChilliMark.py: 5.5 * (cv2.contourArea(self.inner))**0.5
-  const fill_limit = Math.max(50, 4.0 * Math.sqrt(innerArea));
-
-  clipNot.delete();
-
-  let font_size = 4;
-  let text_shift: [number, number] = [0, 0];
-  const estTextW = 80;
-  const estTextH = 100;
-  if (estTextH > h * 1.2) {
-    font_size = 3;
-    text_shift = [-Math.floor((estTextW * 0.75) / 2), -h];
-  } else {
-    font_size = 4;
-    text_shift = [-Math.floor(estTextW / 2), Math.floor(estTextH / 2)];
-  }
-
-  // Cleanup
-  for (let i = 0; i < outerCnts.size(); i++) {
-    outerCnts.get(i).delete();
-  }
-  outerCnts.delete();
-  if (check_img) check_img.delete();
-  if (check_outer) check_outer.delete();
-  outer.delete();
-
-  return {
-    w,
-    h,
-    x: last_x1_e + x,
-    y: last_y1_e + y,
-    cx: last_x1_e + x + halfW,
-    cy: last_y1_e + y + halfH,
-    outer: outerPts,
-    inner: innerPts,
-    fill_limit,
-    text_shift,
-    font_size,
   };
+  const thresholdRegion = (x1: number, y1: number, x2: number, y2: number, blur: boolean): any => {
+    const roi = image.roi(new cv.Rect(x1, y1, x2 - x1, y2 - y1));
+    try { return get_thresh(cv, roi, blur); } finally { roi.delete(); }
+  };
+
+  let threshold: any = null;
+  let measured: any = null;
+  let outer: any = null;
+  let inverted: any = null;
+  let inner: any = null;
+  let originX = minX;
+  let originY = minY;
+  try {
+    threshold = thresholdRegion(minX, minY, maxX, maxY, false);
+    measured = firstContour(threshold);
+    let previousArea = cv.contourArea(measured);
+    let checkArea = 0;
+    if (previousArea <= 10) throw new Error('The selection does not contain a usable empty box.');
+
+    let extra = 0;
+    while (Math.abs(checkArea - previousArea) > 10) {
+      // Python grows the crop until the contour area stabilizes. A bounded
+      // failure protects the browser; reaching it never accepts guessed geometry.
+      if (extra >= 128) throw new Error('Box contour did not stabilize. Select one empty box more tightly.');
+      previousArea = checkArea;
+      originX = Math.max(0, minX - extra);
+      originY = Math.max(0, minY - extra);
+      threshold.delete();
+      threshold = null;
+      threshold = thresholdRegion(originX, originY,
+        Math.min(image.cols, maxX + extra * 2), Math.min(image.rows, maxY + extra * 2), true);
+      measured.delete();
+      measured = null;
+      measured = firstContour(threshold);
+      checkArea = cv.contourArea(measured);
+      extra++;
+    }
+
+    outer = new cv.Mat();
+    cv.approxPolyDP(measured, outer, 0.05 * cv.arcLength(measured, true), true);
+    const bound = cv.boundingRect(outer);
+    const boundingArea = bound.width * bound.height;
+    if (!boundingArea || Math.abs(boundingArea - bw * bh) / boundingArea > 1) {
+      throw new Error('The area of the box contour does not match the selection.');
+    }
+    const outerCenter = contour_center(cv, outer);
+    if (cv.contourArea(outer) <= 0) throw new Error('The outer box contour is degenerate.');
+
+    inverted = new cv.Mat();
+    cv.bitwise_not(threshold, inverted);
+    const vector = new cv.MatVector();
+    try {
+      vector.push_back(outer);
+      cv.drawContours(inverted, vector, -1, new cv.Scalar(0), Math.floor(bound.width / 6));
+    } finally { vector.delete(); }
+    const cavity = inverted.roi(new cv.Rect(bound.x, bound.y, bound.width, bound.height));
+    try { inner = firstContour(cavity); } finally { cavity.delete(); }
+    const innerArea = cv.contourArea(inner);
+    if (innerArea <= 0) throw new Error('The selected box has no usable inner contour.');
+    const innerCenter = contour_center(cv, inner);
+    const centered = (contour: any, center: [number, number]): ContourPoint[] =>
+      extractPoints(contour).map(pt => ({ x: pt.x - center[0], y: pt.y - center[1] }));
+
+    // Annotation placement is independent of mark detection.
+    const font_size = 100 > bound.height * 1.2 ? 3 : 4;
+    const text_shift: [number, number] = font_size === 3
+      ? [-30, -bound.height] : [-40, 50];
+    return {
+      w: bound.width,
+      h: bound.height,
+      x: originX + bound.x,
+      y: originY + bound.y,
+      cx: originX + outerCenter[0],
+      cy: originY + outerCenter[1],
+      outer: centered(outer, outerCenter),
+      inner: centered(inner, innerCenter),
+      fill_limit: 5.5 * Math.sqrt(innerArea),
+      text_shift,
+      font_size,
+    };
+  } finally {
+    threshold?.delete();
+    measured?.delete();
+    outer?.delete();
+    inverted?.delete();
+    inner?.delete();
+  }
 }
 
 /**

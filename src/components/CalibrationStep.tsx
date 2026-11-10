@@ -266,22 +266,24 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       ctx.lineWidth = 4;
       ctx.strokeRect(localX, localY, localW, localH);
 
-      // Inner boundary rectangle (thickness ~ w/6)
-      const borderWidth = Math.max(2, Math.floor(localW / 8));
+      // Preview the measured cavity rather than an invented inset rectangle.
+      const cx = localX + localW / 2;
+      const cy = localY + localH / 2;
       ctx.strokeStyle = '#34d399';
       ctx.lineWidth = 2;
       ctx.setLineDash([4, 4]);
-      ctx.strokeRect(
-        localX + borderWidth,
-        localY + borderWidth,
-        Math.max(4, localW - borderWidth * 2),
-        Math.max(4, localH - borderWidth * 2)
-      );
+      if (params.inner.length) {
+        ctx.beginPath();
+        params.inner.forEach((point, index) => {
+          if (index === 0) ctx.moveTo(cx + point.x, cy + point.y);
+          else ctx.lineTo(cx + point.x, cy + point.y);
+        });
+        ctx.closePath();
+        ctx.stroke();
+      }
       ctx.setLineDash([]);
 
-      // Center crosshair exactly at box center
-      const cx = localX + localW / 2;
-      const cy = localY + localH / 2;
+      // Center crosshair
       ctx.fillStyle = '#10b981';
       ctx.fillRect(cx - 2, cy - localH / 2 - 8, 4, localH + 16);
       ctx.fillRect(cx - localW / 2 - 8, cy - 2, localW + 16, 4);
@@ -342,6 +344,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     const y2 = Math.round(Math.max(qStart.y, qCurrent.y));
 
     if (x2 - x1 > 200 && y2 - y1 > 200) {
+      setHasValidBox(false);
       onParamsChange({
         ...params,
         x1,
@@ -387,6 +390,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   const handleBoxMouseUp = async () => {
     if (!isDrawingBox || !boxStart || !boxCurrent || !canonicalTemplateDataUrl) return;
     setIsDrawingBox(false);
+    setHasValidBox(false);
 
     const localX1 = Math.round(Math.min(boxStart.x, boxCurrent.x));
     const localY1 = Math.round(Math.min(boxStart.y, boxCurrent.y));
@@ -409,15 +413,12 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         const pageBoxX2 = params.x1 + localX2;
         const pageBoxY2 = params.y1 + localY2;
 
-        const boxResult = set_box(
-          cv,
-          tMat,
-          pageBoxX1,
-          pageBoxY1,
-          pageBoxX2,
-          pageBoxY2
-        );
-        tMat.delete();
+        let boxResult: ReturnType<typeof set_box>;
+        try {
+          boxResult = set_box(cv, tMat, pageBoxX1, pageBoxY1, pageBoxX2, pageBoxY2);
+        } finally {
+          tMat.delete();
+        }
 
         // Use exact detected outer contour bounding position if available, fallback to user drag
         const detectedBoxX1 = typeof boxResult.x === 'number' ? boxResult.x : pageBoxX1;
@@ -463,7 +464,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         setSnapStatus('Box parameters successfully derived!');
       } catch (err: any) {
         console.error('Error during set_box:', err);
-        setSnapStatus('Could not snap box contour. Please drag closely around the box.');
+        setSnapStatus(err instanceof Error ? err.message : 'Could not extract the box contour. Please select another empty box.');
       } finally {
         setIsSnapping(false);
       }
