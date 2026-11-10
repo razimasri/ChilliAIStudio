@@ -5,8 +5,8 @@ import { ExamFile } from '../types';
 
 interface MarkingAnimationStepProps {
   files: ExamFile[];
-  currentIndex: number;
-  currentStudentName: string;
+  activePages: number[];
+  completedPages: number[];
   progressPercent: number;
   statusText?: string;
   pageErrors?: string[];
@@ -15,8 +15,8 @@ interface MarkingAnimationStepProps {
 
 export const MarkingAnimationStep: React.FC<MarkingAnimationStepProps> = ({
   files,
-  currentIndex,
-  currentStudentName,
+  activePages,
+  completedPages,
   progressPercent,
   statusText,
   pageErrors = [],
@@ -24,7 +24,7 @@ export const MarkingAnimationStep: React.FC<MarkingAnimationStepProps> = ({
 }) => {
   return (
     <div className="max-w-4xl mx-auto px-4 py-12 text-center space-y-6">
-      {pageErrors.length > 0 && onBack && <button onClick={onBack} className="rounded-lg bg-[#8c1529] px-4 py-2 text-white">Back to upload</button>}
+      {onBack && <button onClick={onBack} className="rounded-lg bg-[#8c1529] px-4 py-2 text-white">{pageErrors.length ? 'Back to upload' : 'Cancel marking'}</button>}
       {/* Animated Chilli Header */}
       <div className="relative inline-flex items-center justify-center">
         <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-[#8c1529] to-[#571622] flex items-center justify-center shadow-2xl shadow-[#8c1529]/40 border-2 border-[#b1a1a4]/30 animate-pulse">
@@ -40,8 +40,8 @@ export const MarkingAnimationStep: React.FC<MarkingAnimationStepProps> = ({
           Marking Scanned Worksheets...
         </h2>
         <p className="text-sm text-[#b1a1a4]">
-          Analyzing page {Math.min(currentIndex + 1, files.length)} of {files.length}:{' '}
-          <span className="text-white font-semibold">{currentStudentName}</span>
+          {completedPages.length} of {files.length} pages complete
+          {activePages.length > 0 && ` · Processing page${activePages.length === 1 ? '' : 's'} ${activePages.map(index => index + 1).join(', ')}`}
         </p>
         {statusText && (
           <p className="text-xs font-mono text-rose-300/80 animate-pulse pt-1">
@@ -82,7 +82,7 @@ export const MarkingAnimationStep: React.FC<MarkingAnimationStepProps> = ({
             ))}
           </div>
           <p className="text-[11px] text-[#a39093]">
-            The batch process gracefully recorded affected scans and continues grading remaining pages.
+            Marking stopped. Review the affected page, then return to upload to retry.
           </p>
         </div>
       )}
@@ -92,14 +92,16 @@ export const MarkingAnimationStep: React.FC<MarkingAnimationStepProps> = ({
         <h4 className="text-xs font-semibold text-[#b1a1a4] uppercase tracking-wider mb-4 text-left">
           Batch Processing Grid
         </h4>
-        <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-3 max-h-56 overflow-y-auto pr-1">
+        <div role="list" aria-label="Page progress" className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-3 max-h-56 overflow-y-auto pr-1">
           {files.map((file, idx) => {
-            const isDone = idx < currentIndex;
-            const isCurrent = idx === currentIndex;
+            const isDone = completedPages.includes(idx);
+            const isCurrent = activePages.includes(idx);
 
             return (
               <div
                 key={file.id + idx}
+                role="listitem"
+                aria-label={`Page ${idx + 1}: ${isDone ? 'complete' : isCurrent ? 'processing' : 'waiting'}`}
                 className={`relative aspect-[1/1.4] rounded-lg overflow-hidden border-2 transition-all duration-200 flex flex-col items-center justify-center ${
                   isDone
                     ? 'border-emerald-500 bg-emerald-950/40'

@@ -13,7 +13,8 @@
     "test:calibration": "node tests/calibration.browser.mjs",
     "test:results": "node tests/results.browser.mjs",
     "test:branding": "node tests/branding.browser.mjs",
-    "test:loading": "node tests/deferredLoading.browser.mjs"
+    "test:loading": "node tests/deferredLoading.browser.mjs",
+    "test:workers": "node tests/markingWorker.browser.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "^5.0.0-release.1",

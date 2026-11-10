@@ -1,14 +1,9 @@
+import { createRasterCanvas, rasterContext, readRaster } from './rasterIO';
 // Original ChilliMark.py placement on the registered 4800 × 6840 scan.
 const X = 4271, Y = 256, WIDTH = 273, HEIGHT = 256;
-let imagePromise: Promise<HTMLImageElement> | null = null;
-
-function loadPrintmark(): Promise<HTMLImageElement> {
-  if (!imagePromise) imagePromise = new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => { imagePromise = null; reject(new Error('Could not load the ChilliMark print watermark.')); };
-    image.src = '/icons/printmark.png';
-  });
+let imagePromise: ReturnType<typeof readRaster> | null = null;
+function loadPrintmark(): ReturnType<typeof readRaster> {
+  if (!imagePromise) imagePromise = readRaster('/icons/printmark.png').catch(error=>{imagePromise=null;throw error;});
   return imagePromise;
 }
 
@@ -18,14 +13,14 @@ export async function addWatermark(cv: any, scan: any): Promise<void> {
     throw new Error('The print watermark requires a registered scan.');
   }
   const image = await loadPrintmark();
-  const canvas = document.createElement('canvas');
+  const canvas = createRasterCanvas();
   canvas.width = WIDTH; canvas.height = HEIGHT;
-  const context = canvas.getContext('2d');
+  const context = rasterContext(canvas);
   if (!context) throw new Error('Could not prepare the print watermark.');
   // Python imread discarded alpha; preserve its white printed background.
   context.fillStyle = 'white'; context.fillRect(0, 0, WIDTH, HEIGHT);
-  context.drawImage(image, 0, 0, WIDTH, HEIGHT);
-  const rgba = cv.imread(canvas);
+  context.drawImage(image.image, 0, 0, WIDTH, HEIGHT);
+  const rgba = cv.matFromImageData(context.getImageData(0,0,WIDTH,HEIGHT));
   const mark = new cv.Mat();
   let destination: any = null;
   try {

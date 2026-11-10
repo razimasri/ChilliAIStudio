@@ -27,6 +27,7 @@ try {
       const { loadExamFile, getExamPage, releaseUnusedSources } = await import('/src/utils/pdfProcessor.ts');
       const engine = await import('/src/utils/omrEngine.ts');
       const { getCV } = await import('/src/utils/cvLoader.ts');
+      const { MarkingClient } = await import('/src/utils/markingClient.ts');
       const cv = await getCV();
       console.log(`geometry: ${name}: OpenCV ready`);
       const response = await fetch(`/samples/${name}.pdf`);
@@ -97,6 +98,15 @@ try {
       for (let i = 0; i < pages.length; i++) {
         const raster = await getExamPage(pages[i]);
         const result = await engine.processStudentScan(cv, raster.url, `Sample ${i + 1}`, i, params, msg => console.log(`geometry: ${name} page ${i + 1}: ${msg}`));
+        if (i === 0) {
+          const worker = new MarkingClient();
+          try {
+            const actual = await worker.mark(await (await fetch(raster.url)).blob(), `Sample ${i + 1}`, i, params, () => {});
+            const normalize = ({annotatedDataUrl, originalDataUrl, rawDeskewedDataUrl, ambiguityCrops, ...state}) => state;
+            if (JSON.stringify(normalize(actual)) !== JSON.stringify(normalize(result))) throw new Error(`${name}: worker recognition differs from main-thread engine`);
+            console.log(`geometry: ${name}: worker responses, questions, coordinates and scores match main-thread engine`);
+          } finally { worker.dispose(); }
+        }
         raster.release();
         const aligned = await engine.renderScanMat(cv, result.rawDeskewedDataUrl || result.annotatedDataUrl);
         const alignedSize = [aligned.cols, aligned.rows];
