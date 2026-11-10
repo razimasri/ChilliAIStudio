@@ -16,7 +16,10 @@
     "test:loading": "node tests/deferredLoading.browser.mjs",
     "test:workers": "node tests/markingWorker.browser.mjs",
     "test:interface": "node tests/interface.browser.mjs",
-    "test:desktop": "node tests/desktopLayout.browser.mjs"
+    "test:desktop": "node tests/desktopLayout.browser.mjs",
+    "test:worker-policy": "node tests/workerPolicy.mjs",
+    "test:resolution": "node tests/resolutionComparison.browser.mjs",
+    "test:throughput": "node tests/markingThroughput.browser.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "^5.0.0-release.1",

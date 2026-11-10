@@ -232,11 +232,18 @@ same engine functions and OpenCV version. The canvas boundary supports
 OffscreenCanvas; scan pixels, thresholding, grouping, response reading, scoring,
 annotation commands and watermark placement keep their existing behavior.
 
-Up to two pages run concurrently when the browser reports at least 8 GiB device
-memory and four logical processors. Lower or unknown memory/core information
-uses one background marking worker. One-page batches use one worker. This is a
-conservative cap: each worker owns an independent OpenCV/WASM heap plus large
-600-DPI image buffers, so increasing workers can exhaust memory or slow devices.
+Auto estimates a ceiling from logical processors, reported device memory and
+largest native scan size (at most four workers). Missing memory information uses
+one worker. It starts with at most two workers. On sufficiently long exams it
+warms those workers, measures four pages, then tries one wave at the ceiling.
+It keeps the larger pool only if throughput improves by at least 10%; otherwise
+it releases the extra workers. These timings include rasterization and worker
+startup. The probe uses real pages and streams their results normally. Short
+exams skip the probe. Browser hints and a short trial cannot guarantee a global
+optimum; page complexity, other apps and thermal throttling affect throughput.
+Setup also offers explicit 1, 2 or 4 worker overrides. Each worker owns an
+independent OpenCV/WASM heap and large 600-DPI buffers. Twenty pages do not mean
+twenty workers: only one input per active worker is prepared at a time.
 Calibration remains on the interface thread. Full PDF rasterization remains
 serial, and supplies only the next input for each available marking worker.
 
@@ -250,7 +257,7 @@ workers, OffscreenCanvas and createImageBitmap; unsupported browsers receive a
 clear error instead of silently reverting to interface-blocking marking.
 
 Run `npm run test:workers` with `CHROMIUM_PATH` as needed. It checks exact response
-and output-pixel parity for normal/ambiguous/corrected scans, actual two-worker
+and output-pixel parity for normal/ambiguous/corrected scans, a four-worker pool and actual job
 overlap, an interface heartbeat during native processing, stable student order,
 worker/URL cleanup on completion/cancellation/failure, hardware caps, and parallel
 progress states. `WORKER_TEST_BUILD=1 npm run test:workers` builds and tests the
@@ -289,3 +296,66 @@ Run `npm run test:desktop` (with `CHROMIUM_PATH` as needed) for the 1440×900,
 1280×720 and 1024×600 desktop layout checks, portrait fit, visible controls,
 selection and the marked-sheet layout. `test:interface` covers the smaller
 screen/touch workflow.
+
+
+### Marking throughput and four-worker option
+
+Marking now transfers native ImageBitmaps to workers directly. The PDF render
+viewport, 600-DPI dimensions and rotation are unchanged, but marking no longer
+PNG-encodes a rendered input only to decode it again in the worker. Encoded PNG
+previews/exports retain their existing paths. An already-cached calibration PNG
+is decoded once rather than rendering that first page again. Transferred input bitmaps are
+closed after decoding, and unused inputs close on cancellation or failure.
+
+Worker canvas output also avoids an extra OpenCV conversion/copy and JavaScript
+pixel copy for already-contiguous 8-bit RGBA matrices. Non-contiguous crops and
+other channel/depth formats keep the original conversion path. This changes
+image transport/storage only: contour detection, deskew, thresholds, row logic,
+response reading and grading rules are unchanged.
+
+A profile of the first IGCSE sample page put about 2.44 s in alignment/deskew,
+1.48 s in box finding, 1.83 s in input loading and just 0.024 s in response
+reading. Native warp/median-blur operations dominate much of the actual CV work;
+changing recognition heuristics was outside this optimization.
+
+Local four-page IGCSE comparisons used the same 27-answer all-A key and
+600-DPI settings in a container limited to two CPU cores and 8 GiB RAM:
+
+| Workers | Previous pipeline | Bitmap/copy improvements |
+| --- | ---: | ---: |
+| 2 | 18.9 s | 16.1 s |
+| 4 | 22.6 s | 19.2 s |
+
+These are individual local runs, not a cross-device speed guarantee. All 108
+responses and four scores agreed before/after in both worker configurations.
+Four workers were slower than two here; Auto now measures extra workers on
+longer batches rather than assuming they help. One-page look-ahead was also
+tested and omitted after it slowed the first result and the batch on this host.
+The queue prepares one input per available worker, not an eager batch.
+
+`test:loading` now compares over 136 million pixels across PNG and direct-bitmap
+inputs, including rotated pages, and checks that marking performs no input PNG
+encoding. `test:workers` covers Blob compatibility, bitmap ownership transfer,
+pixel-identical normal/ambiguous/corrected output, the four-worker pool, result
+order, streaming, cancellation and resource cleanup. Use `WORKER_TEST_BUILD=1`
+for the built worker/chunk regression.
+
+A longer run used 20 pages (the 14 bundled IGCSE scans plus six repeats).
+All 540 responses and 20 scores matched with 2, 4 and Auto. This environment
+reported three logical processors and 8 GiB; Auto tried three workers and
+returned to two after the measured trial was slower. More pages amortize
+startup and make a trial useful, but do not make four workers universally faster.
+`npm run test:worker-policy` checks hardware/page-size caps and the throughput
+threshold. `npm run test:throughput` repeats the 20-page comparison; optionally
+set `COUNTS=2,4,auto` and `BENCHMARK_REPORT=/path/report.json` to save its results.
+
+`npm run test:resolution` is a separate diagnostic: four real IGCSE pages are
+shrunk to one quarter of their width and height (one sixteenth of the pixels),
+then upscaled to their original dimensions and marked with the same rules.
+It reports changed answers, scores and failures rather than assuming equal
+output. This experiment is not an application setting; normal marking always
+uses the existing full-resolution pixels.
+
+The initial four-page resolution trial matched all 108 answers and all four
+scores. That small sample does not establish safety for faint marks, erasures
+or other scans, so it does not enable downsampling in normal marking.

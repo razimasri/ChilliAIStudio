@@ -74,6 +74,16 @@ try {
       name: 'Continue to calibration',
       exact: true,
     });
+    await page
+      .getByLabel('Parallel marking', { exact: true })
+      .selectOption('4');
+    assert.equal(
+      await page.getByLabel('Parallel marking', { exact: true }).inputValue(),
+      '4',
+    );
+    await page
+      .getByLabel('Parallel marking', { exact: true })
+      .selectOption('auto');
     await proceed.waitFor();
     assert.equal(await proceed.isEnabled(), true);
     assert.equal(
@@ -153,13 +163,11 @@ try {
       c.width = c.height = 20;
       return c.toDataURL('image/png').split(',')[1];
     });
-    await page
-      .locator('input[type="file"]')
-      .setInputFiles({
-        name: 'personal.png',
-        mimeType: 'image/png',
-        buffer: Buffer.from(personalPng, 'base64'),
-      });
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'personal.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(personalPng, 'base64'),
+    });
     await page.waitForFunction(
       () => document.querySelectorAll('button[title="Remove"]').length === 1,
     );
@@ -175,13 +183,11 @@ try {
     );
     assert.equal(await proceed.isDisabled(), true);
     await page.getByLabel('Answer key', { exact: true }).fill('ABC');
-    await page
-      .locator('input[type="file"]')
-      .setInputFiles({
-        name: 'more-personal.png',
-        mimeType: 'image/png',
-        buffer: Buffer.from(personalPng, 'base64'),
-      });
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'more-personal.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(personalPng, 'base64'),
+    });
     await page.waitForFunction(
       () => document.querySelectorAll('button[title="Remove"]').length === 2,
     );

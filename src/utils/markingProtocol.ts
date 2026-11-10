@@ -2,7 +2,7 @@ import type { CalibrationParams, StudentResult } from "../types";
 export type MarkingRequest =
   | {
       type: "mark";
-      input: Blob;
+      input: Blob | ImageBitmap;
       name: string;
       index: number;
       params: CalibrationParams;

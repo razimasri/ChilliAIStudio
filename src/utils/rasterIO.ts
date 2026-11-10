@@ -16,14 +16,20 @@ export function rasterContext(
   return context as
     CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 }
-export async function readRaster(
-  url: string,
-): Promise<{
+/** Supplied bitmaps are consumed and closed once scan decoding finishes. */
+export async function readRaster(url: string | ImageBitmap): Promise<{
   image: CanvasImageSource;
   width: number;
   height: number;
   release: () => void;
 }> {
+  if (typeof url !== "string")
+    return {
+      image: url,
+      width: url.width,
+      height: url.height,
+      release: () => url.close(),
+    };
   if (typeof document === "undefined") {
     const response = await fetch(url);
     if (!response.ok) throw new Error("Could not read scan image.");
@@ -53,6 +59,20 @@ export async function readRaster(
 export function drawMat(cv: any, canvas: RasterCanvas, mat: any): void {
   if (typeof document !== "undefined") {
     cv.imshow(canvas, mat);
+    return;
+  }
+  // Full registered RGBA scans are already 8-bit and contiguous. putImageData
+  // synchronously copies them, so neither convertTo nor a second JS pixel copy is needed.
+  if (mat.type() === cv.CV_8UC4 && mat.isContinuous()) {
+    const bytes = mat.data;
+    const pixels = new ImageData(
+      new Uint8ClampedArray(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+      mat.cols,
+      mat.rows,
+    );
+    canvas.width = mat.cols;
+    canvas.height = mat.rows;
+    rasterContext(canvas).putImageData(pixels, 0, 0);
     return;
   }
   const image = new cv.Mat();

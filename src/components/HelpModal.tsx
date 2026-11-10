@@ -78,6 +78,11 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           single sheet can be downloaded or printed in Marked sheets.
         </li>
       </ol>
+      <p className="text-sm text-[#b1a1a4]">
+        Parallel marking offers Auto, 1, 2 or 4 workers. Auto limits workers
+        using CPU, memory and scan size, then tests extra workers during longer
+        exams. It keeps them only when measured throughput improves.
+      </p>
       <div className="rounded-xl bg-[#18090b] p-4 text-sm text-[#b1a1a4]">
         Use clear, dark marks and avoid faint scans or heavy erasures.
         ChilliMark learns the box shape and paper background from the empty box

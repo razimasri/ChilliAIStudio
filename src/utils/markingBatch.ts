@@ -1,19 +1,19 @@
-import type { CalibrationParams, ExamFile, StudentResult } from '../types';
-import { getExamPage } from './pdfProcessor';
-import { releaseResultImages } from './imageStore';
-import { MarkingClient } from './markingClient';
+import type { CalibrationParams, ExamFile, StudentResult } from "../types";
+import { getMarkingPage } from "./pdfProcessor";
+import { releaseResultImages } from "./imageStore";
+import { MarkingClient } from "./markingClient";
+import { workerPlan, trialIsFaster } from "./workerPolicy";
 export function markingWorkerCount(
   pageCount: number,
   hardware: { hardwareConcurrency?: number; deviceMemory?: number } = navigator,
 ): number {
-  // Each 600-DPI scan and independent OpenCV heap is large. Unknown memory is conservative.
-  return Math.min(
-    Math.max(1, pageCount),
-    (hardware.deviceMemory ?? 0) >= 8 &&
-      (hardware.hardwareConcurrency ?? 0) >= 4
-      ? 2
-      : 1,
-  );
+  return workerPlan(
+    Array.from({ length: Math.max(1, pageCount) }, () => ({
+      width: 4800,
+      height: 6840,
+    })),
+    hardware,
+  ).initial;
 }
 export interface MarkingProgress {
   index: number;
@@ -22,6 +22,8 @@ export interface MarkingProgress {
   active: number[];
   done: number[];
   message: string;
+  autoPhase?: "warmup" | "baseline" | "trial" | "selected";
+  autoCeiling?: number;
 }
 export async function markBatch(
   files: ExamFile[],
@@ -29,14 +31,26 @@ export async function markBatch(
   params: CalibrationParams,
   signal: AbortSignal,
   progress: (state: MarkingProgress) => void,
-  workerCount = markingWorkerCount(files.length),
+  workerCount?: number,
   onResult?: (result: StudentResult) => void,
 ): Promise<StudentResult[]> {
   signal.throwIfAborted();
-  const count = Math.min(
+  if (!files.length) return [];
+  const automatic = workerCount === undefined;
+  const plan = workerPlan(files);
+  let count = Math.min(
     files.length,
-    Math.max(1, Math.min(2, Math.floor(workerCount) || 1)),
+    automatic
+      ? plan.initial
+      : Math.max(1, Math.min(4, Math.floor(workerCount) || 1)),
   );
+  let phase: MarkingProgress["autoPhase"] = automatic ? "warmup" : undefined;
+  const labels = {
+    warmup: "warming up",
+    baseline: "measuring",
+    trial: "testing",
+    selected: "selected",
+  };
   const controller = new AbortController(),
     clients: MarkingClient[] = [],
     results: StudentResult[] = [];
@@ -49,83 +63,112 @@ export async function markBatch(
     controller.abort();
     clients.forEach((client) => client.dispose());
   };
-  signal.addEventListener('abort', cancel, { once: true });
+  signal.addEventListener("abort", cancel, { once: true });
   const jobs: Promise<void>[] = [];
+  const grow = (target: number) => {
+    while (clients.length < target) clients.push(new MarkingClient());
+  };
+  const shrink = (target: number) => {
+    while (clients.length > target) clients.pop()!.dispose();
+  };
   try {
-    for (let slot = 0; slot < count; slot++) clients.push(new MarkingClient());
-    for (const client of clients)
-      jobs.push(
-        (async () => {
-          while (next < files.length) {
-            controller.signal.throwIfAborted();
-            const index = next++,
-              name =
-                names[index] || `Student ${String(index + 1).padStart(2, '0')}`;
-            active.add(index);
-            const report = (message: string) =>
-              progress({
-                index,
-                completed,
-                workers: count,
-                active: [...active],
-                done: [...done],
-                message: `Page ${index + 1} (${name}): ${message}`,
-              });
-            try {
-              report('Preparing full-resolution page…');
-              // Only each available worker's current input is prepared, never a whole batch.
-              const raster = await getExamPage(
-                files[index],
-                undefined,
-                controller.signal,
-              );
-              let input: Blob;
-              try {
-                const response = await fetch(raster.url, {
-                  signal: controller.signal,
-                });
-                if (!response.ok)
-                  throw new Error('Could not read page raster.');
-                input = await response.blob();
-              } finally {
-                raster.release();
-              }
+    const run = async (end: number) => {
+      jobs.length = 0;
+      for (const client of clients)
+        jobs.push(
+          (async () => {
+            while (next < end) {
               controller.signal.throwIfAborted();
-              const result = await client.mark(
-                input,
-                name,
-                index,
-                params,
-                report,
-              );
-              if (controller.signal.aborted) {
-                releaseResultImages([result]);
-                controller.signal.throwIfAborted();
-              }
-              result.originalDataUrl = files[index].dataUrl;
-              results[index] = result;
-              onResult?.(result);
-              completed++;
-              active.delete(index);
-              done.add(index);
-              report('Complete');
-            } catch (error) {
-              if (!controller.signal.aborted) {
-                failure = new Error(
-                  `Page ${index + 1} (${name}): ${error instanceof Error ? error.message : String(error)}`,
+              const index = next++,
+                name =
+                  names[index] ||
+                  `Student ${String(index + 1).padStart(2, "0")}`;
+              active.add(index);
+              const report = (message: string) =>
+                progress({
+                  index,
+                  completed,
+                  workers: count,
+                  active: [...active],
+                  done: [...done],
+                  autoPhase: phase,
+                  autoCeiling: automatic ? plan.ceiling : undefined,
+                  message: `${automatic ? `Auto: ${labels[phase!]} ${count} workers · ` : ""}Page ${index + 1} (${name}): ${message}`,
+                });
+              try {
+                report("Preparing full-resolution page…");
+                // Prepare one native input per available worker, without PNG round trips.
+                const raster = await getMarkingPage(
+                  files[index],
+                  controller.signal,
                 );
-                cancel();
+                let result: StudentResult;
+                try {
+                  controller.signal.throwIfAborted();
+                  if (!raster.bitmap)
+                    throw new Error("Could not prepare native page pixels.");
+                  result = await client.mark(
+                    raster.bitmap,
+                    name,
+                    index,
+                    params,
+                    report,
+                  );
+                } finally {
+                  raster.release();
+                }
+                if (controller.signal.aborted) {
+                  releaseResultImages([result]);
+                  controller.signal.throwIfAborted();
+                }
+                result.originalDataUrl = files[index].dataUrl;
+                results[index] = result;
+                onResult?.(result);
+                completed++;
+                active.delete(index);
+                done.add(index);
+                report("Complete");
+              } catch (error) {
+                if (!controller.signal.aborted) {
+                  failure = new Error(
+                    `Page ${index + 1} (${name}): ${error instanceof Error ? error.message : String(error)}`,
+                  );
+                  cancel();
+                }
+                throw error;
               }
-              throw error;
             }
-          }
-        })(),
-      );
-    const settled = await Promise.allSettled(jobs);
-    signal.throwIfAborted();
-    if (failure) throw failure;
-    const rejected = settled.find((result) => result.status === 'rejected');
-    if (rejected?.status === 'rejected') throw rejected.reason;
+          })(),
+        );
+      const settled = await Promise.allSettled(jobs);
+      signal.throwIfAborted();
+      if (failure) throw failure;
+      const rejected = settled.find((result) => result.status === "rejected");
+      if (rejected?.status === "rejected") throw rejected.reason;
+    };
+    grow(count);
+    if (automatic && plan.canTrial) {
+      await run(Math.min(files.length, count)); // Warm the existing runtimes first.
+      phase = "baseline";
+      let started = performance.now(),
+        before = completed;
+      await run(Math.min(files.length, next + count * 2));
+      const baselineRate = (completed - before) / (performance.now() - started),
+        baseCount = count;
+      phase = "trial";
+      count = plan.ceiling;
+      grow(count);
+      started = performance.now();
+      before = completed;
+      await run(Math.min(files.length, next + count));
+      const trialRate = (completed - before) / (performance.now() - started);
+      if (!trialIsFaster(baselineRate, trialRate)) {
+        count = baseCount;
+        shrink(count);
+      }
+      phase = "selected";
+    } else if (automatic) phase = "selected";
+    await run(files.length);
     return results;
   } catch (error) {
     cancel();
@@ -133,7 +176,7 @@ export async function markBatch(
     releaseResultImages(results.filter(Boolean));
     throw error;
   } finally {
-    signal.removeEventListener('abort', cancel);
+    signal.removeEventListener("abort", cancel);
     clients.forEach((client) => client.dispose());
   }
 }

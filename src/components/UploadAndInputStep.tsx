@@ -3,7 +3,7 @@ import { Dialog } from './Dialog';
 import { APP_VERSION, RELEASE_NAME } from '../utils/release';
 import React, { useEffect, useRef, useState } from 'react';
 import { Upload, Trash2, Eye, RotateCw } from 'lucide-react';
-import { ExamFile, CalibrationParams } from '../types';
+import { ExamFile, CalibrationParams, MarkingConcurrency } from '../types';
 import {
   loadExamFile,
   releaseUnusedSources,
@@ -23,6 +23,8 @@ interface UploadAndInputStepProps {
   params: CalibrationParams;
   onParamsChange: (params: CalibrationParams) => void;
   onContinue: () => void;
+  markingConcurrency: MarkingConcurrency;
+  onMarkingConcurrencyChange: (value: MarkingConcurrency) => void;
 }
 
 export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
@@ -35,6 +37,8 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
   params,
   onParamsChange,
   onContinue,
+  markingConcurrency,
+  onMarkingConcurrencyChange,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isLoadingFile, setIsLoadingFile] = useState(false);
@@ -535,6 +539,34 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
             />
             <p id="key-help" className="text-sm text-[#b1a1a4] mt-1">
               One letter per question. Spaces and line breaks are ignored.
+            </p>
+          </div>
+          <div className="border-t border-[#571622] pt-4 space-y-2">
+            <label htmlFor="marking-workers" className="font-semibold block">
+              Parallel marking
+            </label>
+            <select
+              id="marking-workers"
+              value={markingConcurrency}
+              onChange={(event) =>
+                onMarkingConcurrencyChange(
+                  event.target.value === 'auto'
+                    ? 'auto'
+                    : (Number(event.target.value) as 1 | 2 | 4),
+                )
+              }
+              className="min-h-11 rounded-xl border border-[#571622] bg-[#18090b] p-2 text-base w-full"
+              aria-describedby="workers-help"
+            >
+              <option value="auto">Auto (adapts to this exam)</option>
+              <option value="1">1 worker</option>
+              <option value="2">2 workers</option>
+              <option value="4">4 workers</option>
+            </select>
+            <p id="workers-help" className="text-sm text-[#b1a1a4]">
+              Auto uses CPU, memory and scan size to set a limit. On longer
+              exams it measures throughput before keeping extra workers.
+              More workers use more memory.
             </p>
           </div>
         </section>
