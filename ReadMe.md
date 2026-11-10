@@ -10,6 +10,19 @@ It was developed against the multiple choice sheets for the IBDP and IGCSE exams
 
 It was designed to match the work flow of teachers who should have ready access to auto-feed scanners. Note: Due to this is does not do any deskewing, only rotation and scaling.
 
+## Branding
+
+The web interface uses the original banner and icon assets. Marked sheets include
+`icons/printmark.png` at the original registered-page position (x=4271, y=256,
+273 × 256 pixels), with the original white print background. The logo is baked
+into the image for both first-pass marking and final correction rendering, so
+previews, PNG downloads, ZIP archives, and printing share the same watermark.
+Raw scans used for detection and correction crops remain free of added branding.
+
+Run `npm run test:branding` to check logo loading, mobile layout, and exact
+watermark placement/pixels. `npm run test:grading` also verifies the watermark in
+the actual exported PNG while checking score consistency.
+
 ## Features
 
 ### No template

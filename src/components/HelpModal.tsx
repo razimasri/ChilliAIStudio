@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, CheckCircle, Flame } from 'lucide-react';
+import { X, CheckCircle } from 'lucide-react';
 
 interface HelpModalProps {
   onClose: () => void;
@@ -11,7 +11,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
       <div className="bg-[#240c10] border border-[#571622] rounded-2xl max-w-xl w-full max-h-[85vh] overflow-y-auto p-6 space-y-5 shadow-2xl">
         <div className="flex items-center justify-between border-b border-[#571622] pb-3">
           <div className="flex items-center gap-2">
-            <Flame className="w-5 h-5 text-[#f3b0ba]" />
+            <img src="/icons/Icon128.png" alt="ChilliMark logo" className="w-8 h-8 rounded bg-white p-0.5 object-contain" />
             <h3 className="text-lg font-bold text-white">ChilliMark Guide</h3>
           </div>
           <button

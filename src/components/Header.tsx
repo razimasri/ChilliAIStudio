@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame, Sparkles, HelpCircle } from 'lucide-react';
+import { Sparkles, HelpCircle } from 'lucide-react';
 
 interface HeaderProps {
   currentStep: number;
@@ -20,7 +20,7 @@ export const Header: React.FC<HeaderProps> = ({ currentStep, onShowHelp }) => {
         {/* Brand */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8c1529] to-[#571622] flex items-center justify-center shadow-lg shadow-[#8c1529]/20 border border-[#b1a1a4]/20">
-            <Flame className="w-6 h-6 text-white animate-pulse" />
+            <img src="/icons/Icon128.png" alt="ChilliMark logo" className="w-10 h-10 rounded-lg bg-white p-1 object-contain" />
           </div>
           <div>
             <div className="flex items-center gap-2">

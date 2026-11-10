@@ -818,7 +818,8 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
       <div className="border border-[#571622] rounded-2xl p-5 bg-[#1a080a] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#a39093]">
         <div className="space-y-1 text-center sm:text-left">
           <p className="text-[#fbe1e5] font-semibold flex items-center justify-center sm:justify-start gap-1.5">
-            <span>🌶️ ChilliMark — Created by Solo Dev</span>
+            <img src="/icons/Icon128.png" alt="ChilliMark logo" className="w-8 h-8 rounded bg-white p-0.5 object-contain" />
+            <span>ChilliMark — Created by Solo Dev</span>
           </p>
           <p>
             Free to use by individual teachers. Dedicated to teachers administering IBDP and Cambridge

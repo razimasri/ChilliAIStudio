@@ -35,6 +35,15 @@ try {
     if(first!==second)throw new Error('Repeated final rendering changed the output pixels');
     if(before!==JSON.stringify(student))throw new Error('Drawing mutated student state');
     if(printed.length!==4||printed.some(text=>text!=='Score = 4 / 27'))throw new Error('Printed score disagrees: '+printed);
+    // Verify the actual exported PNG contains the original printmark pixels.
+    const logo=await e.loadImageElement('/icons/printmark.png');
+    const logoCanvas=document.createElement('canvas');logoCanvas.width=273;logoCanvas.height=256;
+    const logoContext=logoCanvas.getContext('2d');logoContext.fillStyle='white';logoContext.fillRect(0,0,273,256);logoContext.drawImage(logo,0,0);
+    const expectedLogo=logoContext.getImageData(0,0,273,256).data;
+    const exported=await e.renderScanMat(cv,first);
+    const logoRoi=exported.roi(new cv.Rect(4271,256,273,256)),packed=new cv.Mat();logoRoi.copyTo(packed);
+    if(!expectedLogo.every((value,i)=>value===packed.data[i]))throw new Error('Exported PNG is missing the original printmark');
+    packed.delete();logoRoi.delete();exported.delete();
     const ambiguous=structuredClone(student);ambiguous.responses[3]=false;ambiguous.questions[3].response=false;
     ambiguous.questions[3].boxes[0].bool=true;ambiguous.questions[3].boxes[1].bool=true;
     ambiguous.incomplete=[ambiguous.questions[3]];ambiguous.hasAmbiguity=true;
