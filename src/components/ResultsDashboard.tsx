@@ -474,9 +474,9 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
       >
         {/* TAB 1: ANNOTATED SHEETS VIEW */}
         {activeTab === 'sheets' && currentStudent && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem] gap-6">
             {/* Left Column: Student Selector and Question Breakdown */}
-            <div className="contents lg:block lg:col-span-4 lg:space-y-6">
+            <div className="contents lg:block lg:col-start-2 lg:row-start-1 lg:space-y-6">
               {/* Candidate Selector Card */}
               <div className="order-1 lg:order-none bg-[#240c10] border border-[#571622] rounded-2xl p-5 shadow-md space-y-4">
                 <div className="flex items-center justify-between">
@@ -629,7 +629,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             </div>
 
             {/* Right Column: High-Res Annotated Canvas Preview */}
-            <div className="order-2 lg:order-none lg:col-span-8 min-w-0 bg-[#18090b] border border-[#571622] rounded-2xl p-4 flex flex-col items-center justify-center relative shadow-inner overflow-hidden min-h-0">
+            <div className="order-2 lg:order-none lg:col-start-1 lg:row-start-1 min-w-0 bg-[#18090b] border border-[#571622] rounded-2xl p-4 flex flex-col items-center justify-center relative shadow-inner overflow-hidden min-h-0">
               <div className="w-full flex flex-wrap items-center justify-between gap-3 mb-3 px-2">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
@@ -671,8 +671,12 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                 <img
                   src={currentStudent.annotatedDataUrl}
                   alt={`Annotated sheet for ${currentStudent.name}`}
-                  className="max-w-none h-auto rounded-lg shadow-2xl border border-gray-600"
-                  style={{ width: `${sheetZoom * 100}%` }}
+                  className={`rounded-lg shadow-2xl border border-gray-600 ${sheetZoom === 1 ? 'max-w-full max-h-[70dvh] w-auto h-auto mx-auto object-contain' : 'max-w-none h-auto'}`}
+                  style={
+                    sheetZoom === 1
+                      ? undefined
+                      : { width: `${sheetZoom * 100}%` }
+                  }
                 />
               </div>
             </div>

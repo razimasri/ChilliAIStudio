@@ -15,7 +15,8 @@
     "test:branding": "node tests/branding.browser.mjs",
     "test:loading": "node tests/deferredLoading.browser.mjs",
     "test:workers": "node tests/markingWorker.browser.mjs",
-    "test:interface": "node tests/interface.browser.mjs"
+    "test:interface": "node tests/interface.browser.mjs",
+    "test:desktop": "node tests/desktopLayout.browser.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "^5.0.0-release.1",

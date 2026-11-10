@@ -273,3 +273,19 @@ Personal files replace a loaded sample and clear its names and answer key.
 Adding more files to an existing personal exam preserves its entered key.
 Mark Another Exam starts a fresh setup with empty names/key. ZIP/CSV output is
 still generated from finalized responses, after all marking and review finish.
+
+
+### Desktop page workspace
+
+At widths of 1024 pixels and above, calibration uses a full-height page window
+on the left and a bounded controls panel on the right. Instructions, tools and
+steps share that panel; Next/Mark Exams stay visible at its bottom. The panel
+can scroll on short screens. Smaller viewports retain the stacked touch layout.
+Marked sheets use the same page-left/student-controls-right arrangement on
+desktop, and Fit shows the entire portrait image. Zoom and Pan retain native
+selection coordinates; the marking engine is unchanged.
+
+Run `npm run test:desktop` (with `CHROMIUM_PATH` as needed) for the 1440×900,
+1280×720 and 1024×600 desktop layout checks, portrait fit, visible controls,
+selection and the marked-sheet layout. `test:interface` covers the smaller
+screen/touch workflow.
