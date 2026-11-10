@@ -289,6 +289,16 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     renderBoxCanvas();
   }, [renderBoxCanvas]);
 
+  useEffect(() => {
+    if (step === 'sampleBox') {
+      updateQAreaCanvas();
+      const timer = setTimeout(() => {
+        renderBoxCanvas();
+      }, 40);
+      return () => clearTimeout(timer);
+    }
+  }, [step, updateQAreaCanvas, renderBoxCanvas]);
+
   // Main canvas mouse handlers (Question Area drag)
   const handleMainMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = mainCanvasRef.current;

@@ -16,10 +16,9 @@ import {
 import { getCV } from './utils/cvLoader';
 import {
   processStudentScan,
-  get_correction_crop,
   calculateQuestionStats,
-  renderToCanonicalMat,
   decodeCVError,
+  renderStudentFinalAnnotation,
 } from './utils/omrEngine';
 
 export function App() {
@@ -125,9 +124,11 @@ export function App() {
           results.push(res);
 
           if (res.hasAmbiguity && res.incomplete.length > 0) {
-            const scanMat = await renderToCanonicalMat(cv, res.annotatedDataUrl);
             for (const q of res.incomplete) {
-              const cropUrl = get_correction_crop(cv, scanMat, q, activeParams);
+              const cropUrl =
+                res.ambiguityCrops?.[q.number] ||
+                res.rawDeskewedDataUrl ||
+                res.annotatedDataUrl;
               ambiguities.push({
                 studentIndex: i,
                 studentName,
@@ -138,8 +139,10 @@ export function App() {
                 choicesCount: activeParams.choices || 4,
               });
             }
-            scanMat.delete();
           }
+
+          // Yield to event loop to allow UI updates and memory reclamation
+          await new Promise((r) => setTimeout(r, 20));
         } catch (pageErr) {
           const decodedErr = decodeCVError(cv, pageErr);
           const errMsg = `Page ${i + 1} (${studentName}) error: ${decodedErr}`;
@@ -232,6 +235,22 @@ export function App() {
       setCurrentAmbiguityIdx((prev) => prev + 1);
     } else {
       setAmbiguityQueue([]);
+      // Bake final annotations for all students matching ChilliMark.py correction_update()
+      try {
+        const cv = await getCV();
+        for (let i = 0; i < updatedResults.length; i++) {
+          const student = updatedResults[i];
+          if (student.hasAmbiguity || student.rawDeskewedDataUrl) {
+            student.annotatedDataUrl = await renderStudentFinalAnnotation(
+              cv,
+              student,
+              params
+            );
+          }
+        }
+      } catch (annoErr) {
+        console.error('Error rendering final annotations:', annoErr);
+      }
       finishMarking(updatedResults, params);
     }
   };

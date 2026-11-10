@@ -44,8 +44,10 @@ export interface StudentResult {
   responses: (string | false)[];
   annotatedDataUrl: string;
   originalDataUrl: string;
+  rawDeskewedDataUrl?: string;
   hasAmbiguity: boolean;
   incomplete: DetectedQuestion[];
+  ambiguityCrops?: Record<number, string>;
 }
 
 export interface AmbiguityResolutionItem {

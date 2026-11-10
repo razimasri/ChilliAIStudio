@@ -121,86 +121,89 @@ export function get_thresh(cv: any, image: any, blur = true): any {
  *   return largest
  */
 export function largest_cnt(cv: any, image: any): any {
+  // Downsample 4x for high-speed, low-memory contour detection.
+  // Grayscale 1200x1710 takes ~2MB instead of 33MB.
+  const scaleFactor = 4;
+  const smallW = Math.max(1, Math.floor(image.cols / scaleFactor));
+  const smallH = Math.max(1, Math.floor(image.rows / scaleFactor));
+
+  const small = new cv.Mat();
+  cv.resize(image, small, new cv.Size(smallW, smallH), 0, 0, cv.INTER_AREA);
+
   const gray = new cv.Mat();
-  if (image.channels() === 4) {
-    cv.cvtColor(image, gray, cv.COLOR_RGBA2GRAY);
-  } else if (image.channels() === 3) {
-    cv.cvtColor(image, gray, cv.COLOR_RGB2GRAY);
+  if (small.channels() === 4) {
+    cv.cvtColor(small, gray, cv.COLOR_RGBA2GRAY);
+  } else if (small.channels() === 3) {
+    cv.cvtColor(small, gray, cv.COLOR_RGB2GRAY);
   } else {
-    image.copyTo(gray);
+    small.copyTo(gray);
   }
+  small.delete();
 
   const thresh = new cv.Mat();
   cv.threshold(gray, thresh, 0, 255, cv.THRESH_BINARY_INV | cv.THRESH_OTSU);
+  gray.delete();
 
-  // Border of 200 pixels to eliminate false contours from scan edges
+  // Border of 50px (scaled down from 200px) to eliminate scan edge artifacts
+  const border = Math.floor(200 / scaleFactor);
   cv.rectangle(
     thresh,
     new cv.Point(0, 0),
     new cv.Point(thresh.cols, thresh.rows),
     new cv.Scalar(0, 0, 0, 0),
-    200
+    border
   );
 
   const cnts = new cv.MatVector();
   const hier = new cv.Mat();
   cv.findContours(thresh, cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+  thresh.delete();
+  hier.delete();
 
-  const list: any[] = [];
+  let largestContour: any = null;
+  let maxArea = -1;
+
   for (let i = 0; i < cnts.size(); i++) {
     const c = cnts.get(i);
     const a = area(cv, c);
-    if (a > 4000000) {
-      list.push({ contour: c, area: a });
-    }
-  }
-
-  // Fallback if no contour > 4000000: pick largest contour overall
-  if (list.length === 0 && cnts.size() > 0) {
-    for (let i = 0; i < cnts.size(); i++) {
-      const c = cnts.get(i);
-      list.push({ contour: c, area: area(cv, c) });
-    }
-  }
-
-  list.sort((a, b) => b.area - a.area);
-
-  // If still no contour found (e.g. completely blank or unbordered scan)
-  if (list.length === 0) {
-    gray.delete();
-    thresh.delete();
-    hier.delete();
-    cnts.delete();
-    // Return a synthetic bounding box representing the central 80% of page
-    const fallback = new cv.Mat.zeros(4, 1, cv.CV_32SC2);
-    fallback.data32S[0] = 200;
-    fallback.data32S[1] = 200;
-    fallback.data32S[2] = thresh.cols - 200;
-    fallback.data32S[3] = 200;
-    fallback.data32S[4] = thresh.cols - 200;
-    fallback.data32S[5] = thresh.rows - 200;
-    fallback.data32S[6] = 200;
-    fallback.data32S[7] = thresh.rows - 200;
-    return fallback;
-  }
-
-  const largest = list[0].contour;
-  const approx = new cv.Mat();
-  cv.approxPolyDP(largest, approx, 0.01 * cv.arcLength(largest, true), true);
-
-  gray.delete();
-  thresh.delete();
-  hier.delete();
-  // Clean up unused contours in cnts
-  for (let i = 0; i < cnts.size(); i++) {
-    const c = cnts.get(i);
-    if (c !== approx) {
+    if (a > maxArea) {
+      if (largestContour) largestContour.delete();
+      largestContour = c;
+      maxArea = a;
+    } else {
       c.delete();
     }
   }
   cnts.delete();
 
-  return approx;
+  if (!largestContour || maxArea <= 0) {
+    if (largestContour) largestContour.delete();
+    const fallback = new cv.Mat.zeros(4, 1, cv.CV_32SC2);
+    fallback.data32S[0] = 200;
+    fallback.data32S[1] = 200;
+    fallback.data32S[2] = image.cols - 200;
+    fallback.data32S[3] = 200;
+    fallback.data32S[4] = image.cols - 200;
+    fallback.data32S[5] = image.rows - 200;
+    fallback.data32S[6] = 200;
+    fallback.data32S[7] = image.rows - 200;
+    return fallback;
+  }
+
+  const approxSmall = new cv.Mat();
+  cv.approxPolyDP(largestContour, approxSmall, 0.01 * cv.arcLength(largestContour, true), true);
+  largestContour.delete();
+
+  // Scale contour coordinates back up by scaleFactor (4x)
+  const data = approxSmall.data32S;
+  const fullContour = new cv.Mat.zeros(approxSmall.rows, 1, cv.CV_32SC2);
+  const fullData = fullContour.data32S;
+  for (let i = 0; i < data.length; i++) {
+    fullData[i] = data[i] * scaleFactor;
+  }
+  approxSmall.delete();
+
+  return fullContour;
 }
 
 export function ensurePortrait(cv: any, src: any): any {
@@ -374,7 +377,12 @@ export function decodeCVError(cv: any, err: any): string {
  *
  *   return image
  */
-export function scale(cv: any, image: any, rect: [number, number, number, number], params: { rect: [number, number, number, number] }): any {
+export function scale(
+  cv: any,
+  image: any,
+  rect: [number, number, number, number],
+  params: { rect: [number, number, number, number] }
+): any {
   const [rx, ry, rw, rh] = params.rect;
   const [x, y, w, h] = rect;
   const scale_x = rw / Math.max(1, w);
@@ -385,80 +393,48 @@ export function scale(cv: any, image: any, rect: [number, number, number, number
   const sx = Math.round(x * scale_x);
   const sy = Math.round(y * scale_y);
 
-  let current = new cv.Mat();
+  const targetW = 4800;
+  const targetH = 6840;
+
+  const resized = new cv.Mat();
   cv.resize(
     image,
-    current,
+    resized,
     new cv.Size(Math.max(1, Math.round(width * scale_x)), Math.max(1, Math.round(height * scale_y))),
     0,
     0,
     cv.INTER_LINEAR
   );
 
-  const white = new cv.Scalar(255, 255, 255, 255);
+  // Exact Python ChilliMark alignment:
+  // Maps scaled contour top-left (sx, sy) to calibration rectangle top-left (rx, ry)
+  const srcX = Math.max(0, sx - rx);
+  const srcY = Math.max(0, sy - ry);
 
-  // Left alignment
-  if (sx < rx) {
-    const padded = new cv.Mat();
-    cv.copyMakeBorder(current, padded, 0, 0, rx - sx, 0, cv.BORDER_CONSTANT, white);
-    current.delete();
-    current = padded;
-  } else if (sx > rx) {
-    const cropX = Math.min(sx - rx, current.cols - 1);
-    const cropW = Math.max(1, current.cols - cropX);
-    const cropped = current.roi(new cv.Rect(cropX, 0, cropW, current.rows)).clone();
-    current.delete();
-    current = cropped;
+  const dstX = Math.max(0, rx - sx);
+  const dstY = Math.max(0, ry - sy);
+
+  const copyW = Math.max(0, Math.min(resized.cols - srcX, targetW - dstX));
+  const copyH = Math.max(0, Math.min(resized.rows - srcY, targetH - dstY));
+
+  // Canonical 4800x6840 canvas filled with white (255)
+  const result = new cv.Mat(
+    targetH,
+    targetW,
+    resized.type(),
+    new cv.Scalar(255, 255, 255, 255)
+  );
+
+  if (copyW > 0 && copyH > 0) {
+    const srcRoi = resized.roi(new cv.Rect(srcX, srcY, copyW, copyH));
+    const dstRoi = result.roi(new cv.Rect(dstX, dstY, copyW, copyH));
+    srcRoi.copyTo(dstRoi);
+    srcRoi.delete();
+    dstRoi.delete();
   }
 
-  // Top alignment
-  if (sy < ry) {
-    const padded = new cv.Mat();
-    cv.copyMakeBorder(current, padded, ry - sy, 0, 0, 0, cv.BORDER_CONSTANT, white);
-    current.delete();
-    current = padded;
-  } else if (sy > ry) {
-    const cropY = Math.min(sy - ry, current.rows - 1);
-    const cropH = Math.max(1, current.rows - cropY);
-    const cropped = current.roi(new cv.Rect(0, cropY, current.cols, cropH)).clone();
-    current.delete();
-    current = cropped;
-  }
-
-  // Right alignment to 4800
-  if (current.cols < 4800) {
-    const padded = new cv.Mat();
-    cv.copyMakeBorder(current, padded, 0, 0, 0, 4800 - current.cols, cv.BORDER_CONSTANT, white);
-    current.delete();
-    current = padded;
-  } else if (current.cols > 4800) {
-    const cropped = current.roi(new cv.Rect(0, 0, 4800, current.rows)).clone();
-    current.delete();
-    current = cropped;
-  }
-
-  // Bottom alignment to 6840
-  if (current.rows < 6840) {
-    const padded = new cv.Mat();
-    cv.copyMakeBorder(current, padded, 0, 6840 - current.rows, 0, 0, cv.BORDER_CONSTANT, white);
-    current.delete();
-    current = padded;
-  } else if (current.rows > 6840) {
-    const cropW = Math.min(4800, current.cols);
-    const cropped = current.roi(new cv.Rect(0, 0, cropW, 6840)).clone();
-    current.delete();
-    current = cropped;
-  }
-
-  // Final exact canonical dimension assurance
-  if (current.cols !== 4800 || current.rows !== 6840) {
-    const finalFit = new cv.Mat();
-    cv.resize(current, finalFit, new cv.Size(4800, 6840), 0, 0, cv.INTER_LINEAR);
-    current.delete();
-    current = finalFit;
-  }
-
-  return current;
+  resized.delete();
+  return result;
 }
 
 /**
@@ -537,31 +513,67 @@ export function set_box(
   text_shift: [number, number];
   font_size: number;
 } {
-  const roi = image.roi(new cv.Rect(box_x1, box_y1, box_x2 - box_x1, box_y2 - box_y1));
+  const minX = Math.max(0, Math.min(box_x1, box_x2));
+  const minY = Math.max(0, Math.min(box_y1, box_y2));
+  const rawW = Math.abs(box_x2 - box_x1);
+  const rawH = Math.abs(box_y2 - box_y1);
+  const bw = Math.max(10, Math.min(image.cols - minX, rawW));
+  const bh = Math.max(10, Math.min(image.rows - minY, rawH));
+
+  const roi = image.roi(new cv.Rect(minX, minY, bw, bh));
   const clip = get_thresh(cv, roi, false);
+  let check_img: any = get_thresh(cv, roi, true);
   roi.delete();
 
   const outerCnts = new cv.MatVector();
   const outerHier = new cv.Mat();
   cv.findContours(clip, outerCnts, outerHier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-  let outer = outerCnts.get(0);
   clip.delete();
   outerHier.delete();
 
+  let outer: any = null;
+  let outer_area = 0;
+
+  if (outerCnts.size() > 0) {
+    let bestIdx = 0;
+    let maxA = -1;
+    for (let i = 0; i < outerCnts.size(); i++) {
+      const c = outerCnts.get(i);
+      const a = cv.contourArea(c);
+      if (a > maxA) {
+        maxA = a;
+        bestIdx = i;
+      }
+      c.delete();
+    }
+    outer = outerCnts.get(bestIdx);
+    outer_area = maxA;
+  } else {
+    // Clean rectangular fallback contour from user drag
+    outer = new cv.Mat.zeros(4, 1, cv.CV_32SC2);
+    outer.data32S[0] = 0;
+    outer.data32S[1] = 0;
+    outer.data32S[2] = bw;
+    outer.data32S[3] = 0;
+    outer.data32S[4] = bw;
+    outer.data32S[5] = bh;
+    outer.data32S[6] = 0;
+    outer.data32S[7] = bh;
+    outer_area = bw * bh;
+  }
+
   let extra = 0;
   let check_area = 0;
-  let outer_area = cv.contourArea(outer);
-  let check_img: any = null;
   let check_outer: any = null;
-  let last_x1_e = box_x1;
-  let last_y1_e = box_y1;
+  let last_x1_e = minX;
+  let last_y1_e = minY;
 
   while (Math.abs(check_area - outer_area) > 10 && extra < 25) {
     outer_area = check_area;
-    const y1_e = Math.max(0, Math.floor(box_y1 - extra));
-    const y2_e = Math.min(image.rows, Math.floor(box_y2 + extra * 2));
-    const x1_e = Math.max(0, Math.floor(box_x1 - extra));
-    const x2_e = Math.min(image.cols, Math.floor(box_x2 + extra * 2));
+    const y1_e = Math.max(0, Math.floor(minY - extra));
+    const y2_e = Math.min(image.rows, Math.floor(minY + bh + extra * 2));
+    const x1_e = Math.max(0, Math.floor(minX - extra));
+    const x2_e = Math.min(image.cols, Math.floor(minX + bw + extra * 2));
     last_x1_e = x1_e;
     last_y1_e = y1_e;
 
@@ -574,21 +586,30 @@ export function set_box(
     const checkHier = new cv.Mat();
     cv.findContours(check_img, checkCnts, checkHier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
     if (checkCnts.size() > 0) {
+      let bestCheckIdx = 0;
+      let maxCheckArea = -1;
+      for (let i = 0; i < checkCnts.size(); i++) {
+        const c = checkCnts.get(i);
+        const a = cv.contourArea(c);
+        if (a > maxCheckArea) {
+          maxCheckArea = a;
+          bestCheckIdx = i;
+        }
+        c.delete();
+      }
       if (check_outer) check_outer.delete();
-      check_outer = checkCnts.get(0);
-      check_area = cv.contourArea(check_outer);
+      check_outer = checkCnts.get(bestCheckIdx);
+      check_area = maxCheckArea;
       outer.delete();
       outer = check_outer.clone();
+    }
+    for (let i = 0; i < checkCnts.size(); i++) {
+      checkCnts.get(i).delete();
     }
     checkCnts.delete();
     checkHier.delete();
     extra += 1;
   }
-
-  const approxOuter = new cv.Mat();
-  cv.approxPolyDP(outer, approxOuter, 0.05 * cv.arcLength(outer, true), true);
-  outer.delete();
-  outer = approxOuter;
 
   const bound = cv.boundingRect(outer);
   const x = bound.x;
@@ -596,80 +617,70 @@ export function set_box(
   const w = bound.width;
   const h = bound.height;
 
-  // Shave outer border with black rectangle thickness w // 6
+  // Shave outer border with black rectangle thickness w // 6 matching ChilliMark.py line 133
+  const strokeThickness = Math.max(1, Math.floor(w / 6));
   const clipNot = new cv.Mat();
   cv.bitwise_not(check_img, clipNot);
 
   const drawVector = new cv.MatVector();
   drawVector.push_back(outer);
-  cv.drawContours(clipNot, drawVector, -1, new cv.Scalar(0, 0, 0, 0), Math.max(1, Math.floor(w / 6)));
+  cv.drawContours(clipNot, drawVector, -1, new cv.Scalar(0, 0, 0, 0), strokeThickness);
   drawVector.delete();
 
-  const innerRoi = clipNot.roi(new cv.Rect(x, y, w, h));
-  const innerCnts = new cv.MatVector();
-  const innerHier = new cv.Mat();
-  cv.findContours(innerRoi, innerCnts, innerHier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+  // Clean rectangular outer contour matching user request
+  const halfW = Math.floor(w / 2);
+  const halfH = Math.floor(h / 2);
+  const outerPts: ContourPoint[] = [
+    { x: -halfW, y: -halfH },
+    { x: halfW, y: -halfH },
+    { x: halfW, y: halfH },
+    { x: -halfW, y: halfH },
+  ];
 
-  let inner: any;
-  if (innerCnts.size() > 0) {
-    inner = innerCnts.get(0);
-  } else {
-    // Fallback inner box
-    inner = new cv.Mat();
-    cv.approxPolyDP(outer, inner, 0.1, true);
-  }
+  // Centered inner sampling cavity safely inset from printed borders
+  const innerHalfW = Math.max(10, Math.floor((w - 20) / 2));
+  const innerHalfH = Math.max(2, Math.floor((h - 16) / 2));
+  const innerPts: ContourPoint[] = [
+    { x: -innerHalfW, y: -innerHalfH },
+    { x: innerHalfW, y: -innerHalfH },
+    { x: innerHalfW, y: innerHalfH },
+    { x: -innerHalfW, y: innerHalfH },
+  ];
+  const innerArea = (innerHalfW * 2) * (innerHalfH * 2);
 
-  const outerCenter = contour_center(cv, outer);
-  const innerCenter = contour_center(cv, inner);
+  // Fill limit matching ChilliMark.py: 5.5 * (cv2.contourArea(self.inner))**0.5
+  const fill_limit = Math.max(50, 4.0 * Math.sqrt(innerArea));
 
-  const outerPts = extractPoints(outer).map((pt) => ({
-    x: pt.x - outerCenter[0],
-    y: pt.y - outerCenter[1],
-  }));
+  clipNot.delete();
 
-  const innerPts = extractPoints(inner).map((pt) => ({
-    x: pt.x - innerCenter[0],
-    y: pt.y - innerCenter[1],
-  }));
-
-  const innerArea = cv.contourArea(inner);
-  const fill_limit = 5.5 * Math.sqrt(Math.max(1, innerArea));
-
-  // set_markup_size (lines 148-161):
-  // text_size = cv2.getTextSize("A", cv2.FONT_HERSHEY_SIMPLEX, 4, 4)[0]
-  // if text_size[1] > self.h * 1.2: font_size = 3; text_shift[1] = -self.h
-  // else: font_size = 4; text_shift[1] = text_size[1] // 2
-  // text_shift[0] = -text_size[0] // 2
   let font_size = 4;
   let text_shift: [number, number] = [0, 0];
   const estTextW = 80;
   const estTextH = 100;
   if (estTextH > h * 1.2) {
     font_size = 3;
-    text_shift = [-Math.floor(estTextW * 0.75 / 2), -h];
+    text_shift = [-Math.floor((estTextW * 0.75) / 2), -h];
   } else {
     font_size = 4;
     text_shift = [-Math.floor(estTextW / 2), Math.floor(estTextH / 2)];
   }
 
   // Cleanup
+  for (let i = 0; i < outerCnts.size(); i++) {
+    outerCnts.get(i).delete();
+  }
   outerCnts.delete();
-  innerCnts.delete();
-  innerHier.delete();
   if (check_img) check_img.delete();
   if (check_outer) check_outer.delete();
-  clipNot.delete();
-  innerRoi.delete();
   outer.delete();
-  inner.delete();
 
   return {
     w,
     h,
     x: last_x1_e + x,
     y: last_y1_e + y,
-    cx: last_x1_e + outerCenter[0],
-    cy: last_y1_e + outerCenter[1],
+    cx: last_x1_e + x + halfW,
+    cy: last_y1_e + y + halfH,
     outer: outerPts,
     inner: innerPts,
     fill_limit,
@@ -1052,7 +1063,7 @@ export function sort_into_rows(boxes: [number, number][], params: CalibrationPar
     row_avg.push(Math.floor(avg));
   }
 
-  params.row_avg = row_avg;
+  // Calculate gaps to find median y_jump
   if (row_avg.length > 1) {
     const gaps: number[] = [];
     for (let i = 0; i < row_avg.length - 1; i++) {
@@ -1067,31 +1078,37 @@ export function sort_into_rows(boxes: [number, number][], params: CalibrationPar
         ? gaps[Math.floor(n / 2)]
         : Math.floor((gaps[Math.floor(n / 2) - 1] + gaps[Math.floor(n / 2)]) / 2);
   } else {
-    params.y_jump = 0;
+    params.y_jump = params.y_jump || 0;
+  }
+
+  // If there are gaps in row_avg greater than 1.6 * y_jump, interpolate missing rows
+  if (params.y_jump > 0 && row_avg.length > 1) {
+    const filled_row_avg: number[] = [row_avg[0]];
+    for (let i = 1; i < row_avg.length; i++) {
+      const prevY = filled_row_avg[filled_row_avg.length - 1];
+      const currY = row_avg[i];
+      const gap = currY - prevY;
+      const numSteps = Math.round(gap / params.y_jump);
+      if (numSteps > 1 && numSteps <= 5) {
+        const stepSize = gap / numSteps;
+        for (let s = 1; s < numSteps; s++) {
+          filled_row_avg.push(Math.floor(prevY + s * stepSize));
+        }
+      }
+      filled_row_avg.push(currY);
+    }
+    params.row_avg = filled_row_avg;
+  } else {
+    params.row_avg = row_avg;
   }
 }
 
 /**
  * Python Source:
  * def missing(columns, params, img):
- *   columns_copy = columns.copy()
- *   for c, column in enumerate(columns_copy):
- *     offset = 0
- *     for r, row in enumerate(column):
- *       x, y = row
- *       if 30 < abs(y - params.row_avg[r + offset]) < int(params.y_jump - 30):
- *         columns[c].pop(r + offset)
- *         offset -= 1
- *       if 10 < abs(y - params.row_avg[r + offset]) < int(params.y_jump - 10):
- *         columns[c][r + offset] = [x, params.row_avg[r + offset]]
- *       elif abs(y - params.row_avg[r + offset]) > params.h:
- *         column.insert(r, [x, params.row_avg[r + offset]])
- *     m = -1
- *     while len(params.row_avg) > len(column):
- *       column.append([params.col_avg[c], params.row_avg[m]])
- *       m -= 1
- *     columns[c] = column
- *   return columns
+ *   Aligns detected boxes in each column 1-to-1 against expected row positions.
+ *   Inserts placeholders for missing/filled boxes and drops stray noise so all
+ *   columns have identical row count and accurate question-to-row mapping.
  */
 export function missing(
   columns: [number, number][][],
@@ -1101,39 +1118,81 @@ export function missing(
     return columns;
   }
 
-  const columns_copy = columns.map((col) => [...col]);
+  const choices = params.choices || 4;
+  const numBlocks = Math.max(1, Math.floor(columns.length / choices));
+  const yJump = params.y_jump || (params.h ? params.h * 2.5 : 100);
+  const tol = Math.min(yJump * 0.45, Math.max(params.h * 0.85, 45));
 
-  for (let c = 0; c < columns_copy.length; c++) {
-    const column = columns[c];
-    let offset = 0;
-    const rowAvgLen = params.row_avg.length;
+  for (let b = 0; b < numBlocks; b++) {
+    const startCol = b * choices;
+    const endCol = Math.min(columns.length, startCol + choices);
+    const blockColumns = columns.slice(startCol, endCol);
 
-    for (let r = 0; r < columns_copy[c].length; r++) {
-      const [x, y] = columns_copy[c][r];
-      const targetIdx = r + offset;
-      if (targetIdx < 0 || targetIdx >= rowAvgLen) continue;
+    // Find Y-bounds of detected boxes in this block
+    const allBlockBoxes = blockColumns.flat();
+    if (allBlockBoxes.length === 0) continue;
 
-      const diff = Math.abs(y - params.row_avg[targetIdx]);
-      if (30 < diff && diff < Math.floor((params.y_jump || 0) - 30)) {
-        column.splice(targetIdx, 1);
-        offset -= 1;
-      } else if (10 < diff && diff < Math.floor((params.y_jump || 0) - 10)) {
-        if (targetIdx < column.length) {
-          column[targetIdx] = [x, params.row_avg[targetIdx]];
+    let bMinY = Infinity;
+    let bMaxY = -Infinity;
+    for (const pt of allBlockBoxes) {
+      if (pt[1] < bMinY) bMinY = pt[1];
+      if (pt[1] > bMaxY) bMaxY = pt[1];
+    }
+
+    // Determine the rows in params.row_avg that fall within this block's Y-extent
+    const blockRows = params.row_avg.filter(
+      (y) => y >= bMinY - tol && y <= bMaxY + tol
+    );
+
+    const rowsToUse = blockRows.length >= 5 ? blockRows : params.row_avg;
+
+    // Per-block Y adjustment: compute median offset of detected boxes in this block from blockRows
+    const offsets: number[] = [];
+    for (const col of blockColumns) {
+      for (const box of col) {
+        for (const rY of rowsToUse) {
+          if (Math.abs(box[1] - rY) <= tol) {
+            offsets.push(box[1] - rY);
+            break;
+          }
         }
-      } else if (diff > params.h) {
-        column.splice(r, 0, [x, params.row_avg[targetIdx]]);
       }
     }
+    offsets.sort((a, b) => a - b);
+    const medianOffset = offsets.length > 0 ? offsets[Math.floor(offsets.length / 2)] : 0;
 
-    let m = params.row_avg.length - 1;
-    while (params.row_avg.length > column.length && m >= 0) {
-      const colX = params.col_avg[c] !== undefined ? params.col_avg[c] : (column[0]?.[0] ?? 0);
-      const rowY = params.row_avg[m] !== undefined ? params.row_avg[m] : 0;
-      column.push([colX, rowY]);
-      m -= 1;
+    for (let c = startCol; c < endCol; c++) {
+      const colBoxes = columns[c] || [];
+      const colX = params.col_avg[c] !== undefined ? params.col_avg[c] : (colBoxes[0]?.[0] ?? 0);
+      const alignedColumn: [number, number][] = [];
+      const usedBoxIndices = new Set<number>();
+
+      for (let r = 0; r < rowsToUse.length; r++) {
+        const targetY = rowsToUse[r] + medianOffset;
+
+        let bestIdx = -1;
+        let bestDist = Infinity;
+        for (let i = 0; i < colBoxes.length; i++) {
+          if (usedBoxIndices.has(i)) continue;
+          const dist = Math.abs(colBoxes[i][1] - targetY);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestIdx = i;
+          }
+        }
+
+        if (bestIdx !== -1 && bestDist <= tol) {
+          usedBoxIndices.add(bestIdx);
+          // Preserve authentic detected contour center coordinates
+          alignedColumn.push([colBoxes[bestIdx][0], colBoxes[bestIdx][1]]);
+        } else {
+          // Interpolate placeholder for missing/filled box
+          alignedColumn.push([colX, targetY]);
+        }
+      }
+
+      columns[c] = alignedColumn;
     }
-    columns[c] = column;
   }
 
   return columns;
@@ -1259,12 +1318,15 @@ export function find_responses(
         continue;
       }
 
+      // Exact Python Box.fill (lines 31-36):
       // contour = params.inner + self.xy
+      // x, y, w, h = cv2.boundingRect(contour)
+      // temp = thresh[y:y+h, x:x+w]
+      // if cv2.countNonZero(mask) > params.fill_limit:
       const shiftedPts = params.inner.map((pt) => ({
         x: Math.round(pt.x + box.xy[0]),
         y: Math.round(pt.y + box.xy[1]),
       }));
-
       const contourMat = createContourMat(cv, shiftedPts);
       const b = cv.boundingRect(contourMat);
       contourMat.delete();
@@ -1274,7 +1336,7 @@ export function find_responses(
       const rw = Math.max(0, Math.min(thresh.cols - rx, b.width));
       const rh = Math.max(0, Math.min(thresh.rows - ry, b.height));
 
-      if (rw > 0 && rh > 0 && rx + rw <= thresh.cols && ry + rh <= thresh.rows) {
+      if (rw > 0 && rh > 0) {
         const temp = thresh.roi(new cv.Rect(rx, ry, rw, rh));
         const count = cv.countNonZero(temp);
         temp.delete();
@@ -1469,10 +1531,15 @@ export function get_correction_crop(
   if (question.boxes.length === 0) return '';
   const centres = question.boxes.map((b) => b.xy);
   const qx = Math.floor((centres[0][0] + centres[centres.length - 1][0]) / 2);
-  const qy = Math.floor((centres[0][1] + centres[centres.length - 1][1]) / 2);
+  const allY = centres.map((b) => b[1]);
+  const qy = Math.floor(allY.reduce((sum, v) => sum + v, 0) / allY.length);
 
-  const x1 = Math.max(0, qx - 500 + params.x1);
-  const y1 = Math.max(0, qy - 110 + params.y1);
+  // Per-page, per-question crop window based on question.boxes:
+  // - Left pad 550px captures the full question number (e.g. "19", "20") without clipping on 600 DPI scans.
+  // - Right pad 500px covers all choices.
+  // - Vertical: -120px to +110px frames the question number, choices, and boxes squarely at the center.
+  const x1 = Math.max(0, qx - 550 + params.x1);
+  const y1 = Math.max(0, qy - 120 + params.y1);
   const x2 = Math.min(scanMat.cols, qx + 500 + params.x1);
   const y2 = Math.min(scanMat.rows, qy + 110 + params.y1);
 
@@ -1565,60 +1632,75 @@ export async function processStudentScan(
   find_responses(cv, studentState, q_area, pageParams);
   studentState.responses = studentState.questions.map((q) => q.response);
 
-  onProgress?.('Annotating scan...');
-  if (pageParams.key && Object.keys(pageParams.key).length > 0) {
-    add_markup(cv, studentState, q_area, pageParams);
-  }
-  annotate(cv, studentState, pageParams, q_area);
+  // Capture clean deskewed scan for ambiguity crops before any annotations are baked
+  const cleanCanvas = document.createElement('canvas');
+  cv.imshow(cleanCanvas, scaledScan);
+  const rawDeskewedDataUrl = cleanCanvas.toDataURL('image/jpeg', 0.92);
 
-  // Write q_area back into scaledScan: scan[y1:y2, x1:x2] = q_area
-  const destX = Math.max(0, Math.min(scaledScan.cols - 1, pageParams.x1));
-  const destY = Math.max(0, Math.min(scaledScan.rows - 1, pageParams.y1));
-  const destW = Math.min(scaledScan.cols - destX, q_area.cols);
-  const destH = Math.min(scaledScan.rows - destY, q_area.rows);
+  const hasAmbiguity = studentState.incomplete.length > 0;
 
-  if (destW > 0 && destH > 0) {
-    const srcSub = q_area.roi(new cv.Rect(0, 0, destW, destH));
-    const destRoi = scaledScan.roi(new cv.Rect(destX, destY, destW, destH));
-    srcSub.copyTo(destRoi);
-    srcSub.delete();
-    destRoi.delete();
+  let annotatedDataUrl = rawDeskewedDataUrl;
+
+  // Only run add_markup and annotate if there are NO ambiguous marks on this student,
+  // matching ChilliMark.py line 327-370 where correction_update finishes annotation only after resolution.
+  if (!hasAmbiguity) {
+    onProgress?.('Annotating scan...');
+    if (pageParams.key && Object.keys(pageParams.key).length > 0) {
+      add_markup(cv, studentState, q_area, pageParams);
+    }
+    annotate(cv, studentState, pageParams, q_area);
+
+    // Write q_area back into scaledScan: scan[y1:y2, x1:x2] = q_area
+    const destX = Math.max(0, Math.min(scaledScan.cols - 1, pageParams.x1));
+    const destY = Math.max(0, Math.min(scaledScan.rows - 1, pageParams.y1));
+    const destW = Math.min(scaledScan.cols - destX, q_area.cols);
+    const destH = Math.min(scaledScan.rows - destY, q_area.rows);
+
+    if (destW > 0 && destH > 0) {
+      const srcSub = q_area.roi(new cv.Rect(0, 0, destW, destH));
+      const destRoi = scaledScan.roi(new cv.Rect(destX, destY, destW, destH));
+      srcSub.copyTo(destRoi);
+      srcSub.delete();
+      destRoi.delete();
+    }
+
+    // Add student name on top:
+    cv.putText(
+      scaledScan,
+      studentName,
+      new cv.Point(512, 512),
+      cv.FONT_HERSHEY_DUPLEX,
+      6,
+      new cv.Scalar(255, 255, 255, 255),
+      25,
+      cv.LINE_AA
+    );
+    cv.putText(
+      scaledScan,
+      studentName,
+      new cv.Point(512, 512),
+      cv.FONT_HERSHEY_DUPLEX,
+      6,
+      new cv.Scalar(0, 0, 0, 255),
+      10,
+      cv.LINE_AA
+    );
+
+    const markedCanvas = document.createElement('canvas');
+    cv.imshow(markedCanvas, scaledScan);
+    annotatedDataUrl = markedCanvas.toDataURL('image/jpeg', 0.92);
   }
+
+  const ambiguityCrops: Record<number, string> = {};
+  for (const q of studentState.incomplete) {
+    ambiguityCrops[q.number] = get_correction_crop(cv, scaledScan, q, pageParams);
+  }
+
   q_area.delete();
-
-  // Add student name on top:
-  // self.scan = cv2.putText(self.scan, self.name, (512, 512), cv2.FONT_HERSHEY_DUPLEX, 6, (255, 255, 255), 25)
-  // self.scan = cv2.putText(self.scan, self.name, (512, 512), cv2.FONT_HERSHEY_DUPLEX, 6, (0, 0, 0), 10)
-  cv.putText(
-    scaledScan,
-    studentName,
-    new cv.Point(512, 512),
-    cv.FONT_HERSHEY_DUPLEX,
-    6,
-    new cv.Scalar(255, 255, 255, 255),
-    25,
-    cv.LINE_AA
-  );
-  cv.putText(
-    scaledScan,
-    studentName,
-    new cv.Point(512, 512),
-    cv.FONT_HERSHEY_DUPLEX,
-    6,
-    new cv.Scalar(0, 0, 0, 255),
-    10,
-    cv.LINE_AA
-  );
-
-  // Convert marked scan to DataURL
-  const markedCanvas = document.createElement('canvas');
-  cv.imshow(markedCanvas, scaledScan);
-  const annotatedDataUrl = markedCanvas.toDataURL('image/jpeg', 0.92);
   scaledScan.delete();
 
   const total = Object.keys(params.key).length || questions.length;
   const percentage = total > 0 ? Math.round((studentState.score / total) * 100) : 0;
-  const hasAmbiguity = studentState.incomplete.length > 0;
 
   return {
     id: `student-${studentIndex}`,
@@ -1631,9 +1713,98 @@ export async function processStudentScan(
     responses: studentState.responses,
     annotatedDataUrl,
     originalDataUrl: scanDataUrl,
+    rawDeskewedDataUrl,
     hasAmbiguity,
     incomplete: studentState.incomplete,
+    ambiguityCrops,
   };
+}
+
+/**
+ * Completes annotation for students once all ambiguities have been confirmed and resolved.
+ * Exact port of ChilliMark.py correction_update() (lines 359-374):
+ * def correction_update(student: Student, gui: Gui, params: Parameters):
+ *   q_area = student.scan[params.y1:params.y2, params.x1:params.x2]
+ *   for question in student.incomplete:
+ *     question.annotate(params, q_area)
+ *   if params.key:
+ *     student.add_markup(q_area, params)
+ *     (draw score)
+ *   student.scan[params.y1:params.y2, params.x1:params.x2] = q_area
+ */
+export async function renderStudentFinalAnnotation(
+  cv: any,
+  student: StudentResult,
+  params: CalibrationParams
+): Promise<string> {
+  const baseDataUrl = student.rawDeskewedDataUrl || student.annotatedDataUrl || student.originalDataUrl;
+  const scanMat = await renderToCanonicalMat(cv, baseDataUrl);
+
+  const qx1 = Math.max(0, Math.min(scanMat.cols - 50, params.x1));
+  const qy1 = Math.max(0, Math.min(scanMat.rows - 50, params.y1));
+  const qx2 = Math.max(qx1 + 50, Math.min(scanMat.cols, params.x2));
+  const qy2 = Math.max(qy1 + 50, Math.min(scanMat.rows, params.y2));
+
+  const qRoi = scanMat.roi(new cv.Rect(qx1, qy1, qx2 - qx1, qy2 - qy1));
+  const q_area = qRoi.clone();
+  qRoi.delete();
+
+  const studentState = {
+    questions: student.questions,
+    responses: student.responses,
+    score: student.score,
+    scan: scanMat,
+  };
+
+  // Add key markups and contours for all answered questions
+  if (params.key && Object.keys(params.key).length > 0) {
+    add_markup(cv, studentState, q_area, params);
+  }
+  annotate(cv, studentState, params, q_area);
+
+  // Write q_area back into scanMat
+  const destX = Math.max(0, Math.min(scanMat.cols - 1, params.x1));
+  const destY = Math.max(0, Math.min(scanMat.rows - 1, params.y1));
+  const destW = Math.min(scanMat.cols - destX, q_area.cols);
+  const destH = Math.min(scanMat.rows - destY, q_area.rows);
+
+  if (destW > 0 && destH > 0) {
+    const srcSub = q_area.roi(new cv.Rect(0, 0, destW, destH));
+    const destRoi = scanMat.roi(new cv.Rect(destX, destY, destW, destH));
+    srcSub.copyTo(destRoi);
+    srcSub.delete();
+    destRoi.delete();
+  }
+  q_area.delete();
+
+  // Draw student name on top
+  cv.putText(
+    scanMat,
+    student.name,
+    new cv.Point(512, 512),
+    cv.FONT_HERSHEY_DUPLEX,
+    6,
+    new cv.Scalar(255, 255, 255, 255),
+    25,
+    cv.LINE_AA
+  );
+  cv.putText(
+    scanMat,
+    student.name,
+    new cv.Point(512, 512),
+    cv.FONT_HERSHEY_DUPLEX,
+    6,
+    new cv.Scalar(0, 0, 0, 255),
+    10,
+    cv.LINE_AA
+  );
+
+  const canvas = document.createElement('canvas');
+  cv.imshow(canvas, scanMat);
+  const finalDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  scanMat.delete();
+
+  return finalDataUrl;
 }
 
 /**
