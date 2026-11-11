@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, LoaderCircle, X } from 'lucide-react';
 import { Dialog } from './Dialog';
 import { CameraClient } from '../utils/camera/client';
-import { cameraError, collectedPage, photograph, placeCapture } from '../utils/camera/batchCapture';
+import { cameraError, collectedPage, detectionFrame, photograph, placeCapture } from '../utils/camera/batchCapture';
 import type { BatchPage } from '../utils/camera/batchCapture';
+import { AUTO_INTERVAL, AutoCaptureGate, scenePixels } from '../utils/camera/autoCapture';
+import type { SceneFrame } from '../utils/camera/autoCapture';
 import type { CapturedPage } from '../utils/camera/scanner';
 function useUrl(blob?: Blob) {
   const [url, setUrl] = useState('');
@@ -25,10 +27,17 @@ function LargePreview({ page, number, onClose }: { page: BatchPage; number: numb
     <img src={url || undefined} alt={`Corrected sheet ${number}`} className="w-full max-h-[55dvh] object-contain" style={{ transform: `rotate(${page.rotation}deg)` }} />
   </div>;
 }
-export default function BatchCameraScanner({ onClose, onConfirm }: {
+export default function BatchCameraScanner({ onClose, onConfirm, initialAuto = false }: {
+  initialAuto?: boolean;
   onClose: () => void;
   onConfirm: (pages: BatchPage[], signal: AbortSignal, progress: (message: string) => void) => Promise<void>;
 }) {
+  const [automatic, setAutomatic] = useState(initialAuto);
+  const [paused, setPaused] = useState(false);
+  const gate = useRef(new AutoCaptureGate());
+  const analysis = useRef<Promise<SceneFrame>>();
+  const frameCanvas = useRef<HTMLCanvasElement>();
+  const captureAction = useRef<(automatic?: boolean) => Promise<void>>();
   const [mode, setMode] = useState<'camera' | 'review'>('camera');
   const [pages, setPages] = useState<BatchPage[]>([]);
   const [recentId, setRecentId] = useState<string>();
@@ -45,7 +54,9 @@ export default function BatchCameraScanner({ onClose, onConfirm }: {
   const lifetime = useRef<AbortController>();
   useEffect(() => {
     alive.current = true; const controller = new AbortController(); lifetime.current = controller;
-    return () => { alive.current = false; controller.abort(); };
+    return () => { alive.current = false; controller.abort();
+      if (frameCanvas.current) frameCanvas.current.width = frameCanvas.current.height = 0;
+    };
   }, []);
   useEffect(() => {
     if (mode !== 'camera') return;
@@ -67,7 +78,7 @@ export default function BatchCameraScanner({ onClose, onConfirm }: {
         const track = current.getVideoTracks()[0];
         if (!track) throw new Error('No video camera is available. Try another camera or Choose files.');
         track.addEventListener('ended', () => {
-          if (!cancelled) { setReady(false); setError('The camera stopped. Previously captured sheets are safe. Try opening the camera again.'); }
+          if (!cancelled) { gate.current.setPaused(true); setReady(false); setError('The camera stopped. Previously captured sheets are safe. Try opening the camera again.'); }
         });
         if (!element) { stop(); return; }
         element.srcObject = current;
@@ -85,29 +96,77 @@ export default function BatchCameraScanner({ onClose, onConfirm }: {
       if (element && element.srcObject === current) { element.pause(); element.srcObject = null; }
     };
   }, [mode, cameraAttempt]);
-  async function capture() {
-    if (pending.current || !ready || !video.current || !client.current || !stream.current) return;
+  async function readScene(): Promise<SceneFrame> {
+    if (!video.current || !client.current) throw new Error('Camera is not ready');
+    frameCanvas.current ||= document.createElement('canvas');
+    const promise = client.current.request<SceneFrame>({ type: 'inspect', frame: detectionFrame(video.current, frameCanvas.current) }, () => {});
+    analysis.current = promise;
+    try { return await promise; } finally { if (analysis.current === promise) analysis.current = undefined; }
+  }
+  useEffect(() => {
+    if (mode !== 'camera' || !ready || !automatic || paused) {
+      gate.current.setPaused(true);
+      if (mode === 'camera' && ready && !pending.current) setStatus(automatic && paused ? 'Paused' : 'Place the full sheet in view, then tap Capture.');
+      return;
+    }
+    let cancelled = false, timer: ReturnType<typeof setTimeout>;
+    const visibility = () => gate.current.setPaused(document.hidden);
+    visibility(); document.addEventListener('visibilitychange', visibility);
+    const poll = async () => {
+      try {
+        if (!cancelled && !document.hidden && !pending.current && !analysis.current) {
+          const scene = await readScene();
+          if (!cancelled && !pending.current) {
+            const decision = gate.current.observe(scene, performance.now());
+            setStatus(decision.message);
+            if (decision.capture) await captureAction.current?.(true);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) { setStatus('Show whole page'); setError(cameraError(err)); }
+      } finally { if (!cancelled) timer = setTimeout(poll, AUTO_INTERVAL); }
+    };
+    void poll();
+    return () => { cancelled = true; clearTimeout(timer); gate.current.setPaused(true); document.removeEventListener('visibilitychange', visibility); };
+  }, [mode, ready, automatic, paused, cameraAttempt]);
+  async function capture(fromAutomatic = false) {
+    if (!alive.current || pending.current || !ready || !video.current || !client.current || !stream.current) {
+      if (fromAutomatic) gate.current.failed(performance.now());
+      return;
+    }
     pending.current = true; setBusy(true); setError(''); setStatus('Capturing sheet. Keep it steady…');
     const replacement = replaceId;
     const scanner = client.current;
     try {
+      if (analysis.current) await analysis.current;
+      if (!alive.current) return;
+      if (!fromAutomatic) {
+        frameCanvas.current ||= document.createElement('canvas');
+        const frame = detectionFrame(video.current!, frameCanvas.current);
+        gate.current.manual({ width: frame.width, height: frame.height, pixels: scenePixels(frame) });
+      }
+      if (!alive.current) return;
       const input = await photograph(video.current, stream.current.getVideoTracks()[0]);
       if (!alive.current) return;
-      const captured = await scanner.request<CapturedPage>({ type: 'capture', input }, message => { if (alive.current) setStatus(message); });
+      const captured = await scanner.request<CapturedPage>({ type: 'capture', input, upright: fromAutomatic }, message => { if (alive.current) setStatus(message); });
       if (!alive.current) return;
       const page = collectedPage(captured);
       setPages(current => placeCapture(current, page, replacement));
       setReplaceId(undefined); setRecentId(replacement || page.id);
-      setStatus(replacement ? 'Sheet replaced. Ready for the next sheet.' : 'Sheet added. Ready for the next sheet.');
-    } catch (err) { if (alive.current) { setError(cameraError(err)); setStatus('No sheet added. Adjust the page and try again.'); } }
+      gate.current.succeeded();
+      setStatus(automatic ? 'Captured — remove sheet' : replacement ? 'Sheet replaced. Ready for the next sheet.' : 'Sheet added. Ready for the next sheet.');
+    } catch (err) { if (alive.current) { gate.current.failed(performance.now()); setError(cameraError(err)); setStatus('No sheet added. Adjust the page and try again.'); } }
     finally { pending.current = false; if (alive.current) setBusy(false); }
   }
+  captureAction.current = capture;
   function review() {
     if (pending.current || !pages.length) return;
-    setReplaceId(undefined); setError(''); setMode('review');
+    gate.current.setPaused(true);
+    setReplaceId(undefined); setError(''); setReady(false); setMode('review');
   }
   function retake(id: string) {
     if (pending.current) return;
+    if (mode === 'review') setReady(false);
     setSelected(undefined); setReplaceId(id); setError(''); setMode('camera');
   }
   async function confirm() {
@@ -124,13 +183,14 @@ export default function BatchCameraScanner({ onClose, onConfirm }: {
   return <Dialog titleId="batch-title" onClose={onClose} className="max-w-4xl">
     <div className="p-4 sm:p-5 space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 id="batch-title" className="text-xl font-bold">{mode === 'camera' ? 'Batch Scan' : 'Review scanned sheets'}</h2>
+        <h2 id="batch-title" className="text-xl font-bold">{mode === 'camera' ? automatic ? 'Auto Scan' : 'Batch Scan' : 'Review scanned sheets'}</h2>
         <button onClick={onClose} aria-label="Cancel batch scanning" className="min-h-11 min-w-11 flex items-center justify-center"><X /></button>
       </div>
       <p className="font-semibold text-[#f3b0ba]" aria-live="polite">{pages.length} sheet{pages.length === 1 ? '' : 's'} captured</p>
       {error && <p role="alert" className="rounded-xl border border-red-800 bg-red-950/60 p-3 text-red-200">{error}</p>}
       {mode === 'camera' ? <>
-        <p className="text-sm text-[#d8c7ca]">Keep the entire sheet flat, upright and in focus on a contrasting surface. Capture each sheet, then move to the next. Review the batch when finished.</p>
+        <label className="flex items-center gap-3 min-h-11 font-semibold"><input type="checkbox" checked={automatic} disabled={busy} onChange={event => { gate.current.setPaused(!event.target.checked || paused); setAutomatic(event.target.checked); }} className="w-5 h-5 accent-[#8c1529]" />Automatic capture</label>
+        <p className="text-sm text-[#d8c7ca]">{automatic ? 'Place one sheet upright in view. Wait for capture, remove it completely, then place the next sheet. Do not leave a stack of sheets in the camera’s view.' : 'Keep the entire sheet flat, upright and in focus on a contrasting surface. Capture each sheet, then move to the next. Review the batch when finished.'}</p>
         {replaceId && <p className="rounded-xl border border-amber-700 bg-amber-950/30 p-3 text-amber-200">Next capture replaces sheet {replacementIndex + 1}. The previous scan stays until the replacement succeeds.
           <button disabled={busy} onClick={() => setReplaceId(undefined)} className="min-h-11 px-3 underline">Keep previous scan</button></p>}
         <div className="relative rounded-xl overflow-hidden bg-black min-h-48">
@@ -139,12 +199,13 @@ export default function BatchCameraScanner({ onClose, onConfirm }: {
         </div>
         <div className="flex items-center gap-3 min-h-20">
           {recent && <Thumbnail page={recent} className="w-14 h-20 object-contain rounded bg-black" />}
-          <p role="status" className={`text-sm ${status.includes('added') || status.includes('replaced') ? 'text-emerald-300' : 'text-[#d8c7ca]'}`}>{status}</p>
+          <p role="status" className={`text-sm ${status.startsWith('Captured') || status.includes('added') || status.includes('replaced') ? 'text-emerald-300' : 'text-[#d8c7ca]'}`}>{status}</p>
         </div>
         {!ready && !busy && <button onClick={() => setCameraAttempt(value => value + 1)} className="min-h-11 rounded-xl bg-[#571622] px-4">Try opening camera again</button>}
         <div className="sticky bottom-0 bg-[#240c10] py-2 flex flex-wrap gap-2">
           <button onClick={() => void capture()} disabled={busy || !ready} className="min-h-14 flex-1 rounded-xl bg-[#8c1529] px-6 text-lg font-bold flex gap-2 items-center justify-center disabled:opacity-40"><Camera />{replaceId ? 'Capture replacement' : 'Capture'}</button>
           <button onClick={() => recent && retake(recent.id)} disabled={busy || !pages.length} className="min-h-11 rounded-xl bg-[#571622] px-3 disabled:opacity-40">Retake Last Scan</button>
+          {automatic && <button disabled={busy} onClick={() => { gate.current.setPaused(!paused); setPaused(!paused); }} className="min-h-11 rounded-xl bg-[#571622] px-4 disabled:opacity-40">{paused ? 'Resume' : 'Pause'}</button>}
           <button onClick={review} disabled={busy || !pages.length} className="min-h-11 rounded-xl bg-emerald-900 px-4 font-semibold disabled:opacity-40">Finish Scanning</button>
           <button onClick={onClose} className="min-h-11 px-3">Cancel</button>
         </div>
@@ -166,7 +227,7 @@ export default function BatchCameraScanner({ onClose, onConfirm }: {
           </article>)}
         </div>
         <div className="sticky bottom-0 bg-[#240c10] py-2 flex flex-wrap items-center gap-2">
-          <button disabled={busy} onClick={() => { setSelected(undefined); setMode('camera'); }} className="min-h-11 rounded-xl bg-[#571622] px-4 disabled:opacity-40">Add more sheets</button>
+          <button disabled={busy} onClick={() => { setSelected(undefined); setReady(false); setMode('camera'); }} className="min-h-11 rounded-xl bg-[#571622] px-4 disabled:opacity-40">Add more sheets</button>
           <button onClick={() => void confirm()} disabled={busy || !pages.length} className="min-h-11 rounded-xl bg-[#8c1529] px-5 font-bold disabled:opacity-40 ml-auto">Confirm batch</button>
           <button onClick={onClose} className="min-h-11 px-3">Cancel</button>
         </div>

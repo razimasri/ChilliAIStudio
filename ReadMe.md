@@ -22,7 +22,10 @@ Samples include 27 IGCSE or 30 IBDP answers.
 For phone photos, choose Scan with Camera for one sheet or Batch Scan for a
 stack. Batch Scan keeps the camera open between captures. Finish Scanning
 opens review with previews, retakes, removal and rotation; Confirm batch adds
-the pages to the normal collection before calibration or marking. See
+the pages to the normal collection before calibration or marking. Auto Scan
+adds hands-free capture: hold one upright sheet still, wait for capture, then
+remove it completely before introducing the next. Pause/Resume and manual
+Capture are available; do not leave a stack in view. See
 [Camera scanning notes](docs/camera-scanning.md) for device requirements.
 
 Calibration supports mouse, finger and pen. Use Draw to frame the answer grid,

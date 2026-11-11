@@ -43,7 +43,9 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           For a phone photo, choose Scan with Camera, keep the full sheet visible,
           check the corrected preview and adjust corners or rotation before confirming.
           For a stack, use Batch Scan to capture sheets consecutively, then Finish
-          Scanning to review and confirm the batch before calibration.
+          Scanning to review and confirm the batch before calibration. Auto Scan captures
+          a stationary upright sheet hands-free; remove it completely before
+          presenting the next. Pause/Resume and manual Capture remain available.
           Sample PDFs include their own names and answer keys: 27 answers for
           IGCSE, 30 for IBDP.
         </li>
