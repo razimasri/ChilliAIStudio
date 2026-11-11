@@ -1,7 +1,7 @@
 {
   "name": "ChilliMark",
   "description": "Heuristic Optical Mark Recognition (OMR) multiple choice answer sheet grading and analysis tool for IBDP and Cambridge IGCSE exams.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

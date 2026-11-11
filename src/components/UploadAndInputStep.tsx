@@ -11,9 +11,11 @@ import {
 } from '../utils/pdfProcessor';
 import { REAL_SAMPLE_CONFIGS } from '../utils/sampleData';
 import { rotateScanImage } from '../utils/omrEngine';
+import type { BatchPage } from '../utils/camera/batchCapture';
 import { PdfLoadingOverlay } from './PdfLoadingOverlay';
 
 const CameraScanner = lazy(() => import('./CameraScanner'));
+const BatchCameraScanner = lazy(() => import('./BatchCameraScanner'));
 
 interface UploadAndInputStepProps {
   files: ExamFile[];
@@ -51,6 +53,7 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [cameraFile, setCameraFile] = useState<File | null>(null);
+  const [batchScanning, setBatchScanning] = useState(false);
   const confirmCameraScan = async (file: File, signal: AbortSignal) => {
     const loaded = await loadExamFile(file);
     if (signal.aborted) { releaseUnusedSources(loaded, []); signal.throwIfAborted(); }
@@ -58,6 +61,23 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
       onStudentNamesChange(''); onAnswerKeyChange(''); onFilesChange(loaded);
     } else onFilesChange([...files, ...loaded]);
     setCameraFile(null);
+  };
+
+  const confirmBatch = async (pages: BatchPage[], signal: AbortSignal, progress: (message: string) => void) => {
+    const loaded: ExamFile[] = [];
+    try {
+      for (let i = 0; i < pages.length; i++) {
+        signal.throwIfAborted(); progress(`Adding sheet ${i + 1} of ${pages.length}…`);
+        const file = new File([pages[i].file], `Camera-sheet-${i + 1}.png`, { type: 'image/png' });
+        const images = await loadExamFile(file);
+        loaded.push(...images.map(image => ({ ...image, rotation: pages[i].rotation })));
+      }
+      signal.throwIfAborted();
+      if (files.some(page => page.isSample)) {
+        onStudentNamesChange(''); onAnswerKeyChange(''); onFilesChange(loaded);
+      } else onFilesChange([...files, ...loaded]);
+      setBatchScanning(false);
+    } catch (error) { releaseUnusedSources(loaded, []); throw error; }
   };
 
   const studentCount = studentNamesText
@@ -298,6 +318,9 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
 
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6 pb-44 sm:pb-32 space-y-5">
+      {batchScanning && <Suspense fallback={<div role="status" className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center">Opening batch scanner…</div>}>
+        <BatchCameraScanner onClose={() => setBatchScanning(false)} onConfirm={confirmBatch} />
+      </Suspense>}
       {cameraFile && <Suspense fallback={<div role="status" className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center">Loading camera scanner…</div>}>
         <CameraScanner file={cameraFile} onClose={() => setCameraFile(null)}
           onRetry={() => { setCameraFile(null); cameraInputRef.current?.click(); }} onConfirm={confirmCameraScan} />
@@ -421,6 +444,8 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
             <div className="flex flex-col items-start gap-1">
               <button onClick={() => cameraInputRef.current?.click()} disabled={isLoadingFile}
                 className="min-h-11 px-4 rounded-xl border border-[#8c1529] font-semibold flex items-center gap-2"><Camera size={20} />Scan with Camera</button>
+              <button onClick={() => setBatchScanning(true)} disabled={isLoadingFile}
+                className="min-h-11 px-4 rounded-xl bg-[#571622] font-semibold flex items-center gap-2"><Camera size={20} />Batch Scan</button>
               <p className="text-xs text-[#b1a1a4] max-w-xs">Use the rear camera or choose a photo. If camera access is unavailable, use Choose files. Keep the full page visible on a contrasting surface.</p>
             </div>
           </div>

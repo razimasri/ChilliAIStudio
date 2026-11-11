@@ -1,7 +1,7 @@
 {
   "name": "chillimark",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
@@ -27,7 +27,8 @@
     "test:calibration-session": "node tests/calibrationSession.mjs",
     "test:cleanup": "node tests/cleanupOptimizations.browser.mjs",
     "test:camera": "node tests/cameraScanning.browser.mjs",
-    "test:camera-interface": "node tests/cameraInterface.browser.mjs"
+    "test:camera-interface": "node tests/cameraInterface.browser.mjs",
+    "test:batch-camera": "node tests/batchCamera.browser.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "^5.0.0-release.1",

@@ -52,3 +52,26 @@ Use a flat sheet, steady focus, a contrasting background and even lighting. Manu
 - `tests/interface.browser.mjs`: select the existing upload input by its label now that there are two file inputs.
 - `package.json`: camera test commands.
 - `docs/camera-scanning.md`: integration, validation and device limitations.
+
+# Batch scanning — v2.2 Birdseye
+
+**Batch Scan** opens a continuous rear-camera session using `getUserMedia`. Tap Capture for each sheet; a successful correction is added immediately, with a count and latest thumbnail. There is no per-sheet confirmation, answer-key requirement, calibration, recognition or marking during capture.
+
+Finish Scanning stops the camera and processing worker, then opens review. Check full-page previews, remove unwanted pages, retake a particular page, rotate upside-down pages by 180°, or return to the camera to add more. Retakes keep the old scan until a replacement succeeds and preserve its position. Confirm batch loads the corrected files sequentially through the existing `loadExamFile` path and updates the normal image collection once. A cancelled/failed import adds no partial batch. Existing samples are replaced with their names/key cleared; personal pages are appended in capture order.
+
+The rear camera is requested at high ideal resolution without making those dimensions mandatory. `ImageCapture.takePhoto()` is preferred when available, otherwise the current video frame is captured losslessly. Low-resolution frames still have to pass the existing camera quality checks. Live capture needs HTTPS (localhost for development), camera permission, and an embedding page that allows camera access. The app metadata now requests camera frame permission. Denial, unsupported APIs, camera loss and correction failures leave previous scans intact, with retry or the existing input alternatives available.
+
+A single `CameraClient`/worker is reused while acquiring a stack. Each capture reuses the existing detection, homography and quality functions. Detection runs once, and the final page is warped once at full size. Missing-boundary/default-corner captures are refused. A canonical PNG and a 240-pixel thumbnail are produced, then the input Mat is released. Operations are serialized; Capture, retake and Finish are blocked while correction is incomplete. Only compressed corrected Files and tiny thumbnails are retained across the batch. Originals and full rasters are not kept for earlier pages. At confirmation, existing upload metadata loading is sequential; subsequent calibration/marking retains the existing deferred image-loading behavior. No second image store, IndexedDB database or marking pipeline is introduced. The session is in memory: reloading or cancelling discards unconfirmed captures.
+
+Batch files:
+
+- `src/components/BatchCameraScanner.tsx`: continuous capture and batch review UI; stream, cancellation and worker lifecycle.
+- `src/utils/camera/batchCapture.ts`: still/video capture, error messages and ordered replacement of compressed batch pages.
+- `src/utils/camera/scanner.ts`, `client.ts`, `camera.worker.ts`: batch command reusing the single-page correction implementation.
+- `src/components/UploadAndInputStep.tsx`, `HelpModal.tsx`: entry, atomic normal-loader handoff and guide instructions.
+- `src/utils/release.ts`, `index.html`, `package.json`, `ReadMe.md`: version 2.2 / 2.2.0; `metadata.json`: camera embedding permission.
+- `tests/batchCamera.browser.mjs`: live simulated camera stream with real OpenCV correction, 30 captures, failure/retake/order/review/transfer/permission/cancellation checks. `tests/cameraScanning.browser.mjs` also exercises batch correction against the equivalent flatbed results; single-page UI tests remain in place. `tests/interface.browser.mjs` expects v2.2.
+
+`npm run test:batch-camera` builds the app and runs a 30-sheet simulated-live-camera test at a phone touch viewport. The source canvas presents a different sheet marker for every capture. The test checks one continuous acquisition stream and one worker, full correction per page, capture order, failed captures/retakes, successful in-place replacement, deletion, add-more, stream/worker release and transfer to the normal collection without an answer key. `BATCH_TEST_COUNT=3` gives a shorter smoke test; `BATCH_TEST_DEV=1` uses the development server. Automated camera and stream tests do not replace physical Android/iOS testing: verify actual camera permissions, resolution negotiated by each phone, ImageCapture support/orientation, a full class-sized session, heat/memory limits and iframe camera policy on the deployed host. Desktop simulated 30-page stability does not establish that every phone will have sufficient memory.
+
+The v2.2 implementation passed the production 30-sheet simulated-stream run and shorter lifecycle/order checks. The six sample marking comparisons, single-page camera UI/fallback regression, ordinary desktop/tablet/phone upload/calibration/review/CSV regression, TypeScript check and production build passed. After retaking an earlier page, the recent thumbnail and Retake Last Scan refer to that successful replacement while its original batch slot is retained.
