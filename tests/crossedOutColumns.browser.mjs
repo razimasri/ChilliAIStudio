@@ -56,8 +56,22 @@ try {
           ),
         );
         try {
-          const boxes = e.find_boxes(cv, roi, params);
-          const legacyBoxes = legacy_find_boxes(cv, roi, params);
+          let threshold;
+          let legacyPhase = false;
+          const checkedCV = new Proxy(cv, { get(target, key) {
+            if (key !== 'adaptiveThreshold') return target[key];
+            return (...args) => {
+              target.adaptiveThreshold(...args);
+              const pixels = args[1].data;
+              if (!legacyPhase) threshold = pixels.slice();
+              else check(threshold.length === pixels.length && threshold.every((v, i) => v === pixels[i]),
+                `${name} page ${index + 1}: threshold pixels changed`);
+            };
+          }});
+          const boxes = e.find_boxes(checkedCV, roi, params);
+          legacyPhase = true;
+          const legacyBoxes = legacy_find_boxes(checkedCV, roi, params);
+          threshold = null;
           check(
             JSON.stringify(boxes) === JSON.stringify(legacyBoxes),
             `${name} page ${index + 1}: single-channel cleanup changed detected centres/order`,

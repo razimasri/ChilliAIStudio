@@ -1,3 +1,4 @@
+import { boundedContourMask, translateContour } from './contourMasks';
 import {
   CalibrationParams,
   MarkingGeometryOptions,
@@ -95,38 +96,44 @@ export function contour_center(cv: any, contour: any): [number, number] {
  *   image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
  *   return cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 27, 5)
  */
+/** Equal RGB channels make grayscale-before-median exactly equivalent. */
+function monochromeRgb(cv: any, image: any): boolean {
+  if (image.depth() !== cv.CV_8U || !image.isContinuous()) return false;
+  const pixels = image.data;
+  for (let i = 0; i < pixels.length; i += 3)
+    if (pixels[i] !== pixels[i + 1] || pixels[i] !== pixels[i + 2]) return false;
+  return true;
+}
 export function get_thresh(cv: any, image: any, blur = true): any {
-  let processed = image;
-  let tempBlur: any = null;
-  if (blur) {
-    tempBlur = new cv.Mat();
-    cv.medianBlur(image, tempBlur, 5);
-    processed = tempBlur;
-  }
-
-  const gray = new cv.Mat();
-  if (processed.channels() === 4) {
-    cv.cvtColor(processed, gray, cv.COLOR_RGBA2GRAY);
-  } else if (processed.channels() === 3) {
-    cv.cvtColor(processed, gray, cv.COLOR_RGB2GRAY);
-  } else {
-    processed.copyTo(gray);
-  }
-
-  const thresh = new cv.Mat();
-  cv.adaptiveThreshold(
-    gray,
-    thresh,
-    255,
-    cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-    cv.THRESH_BINARY_INV,
-    27,
-    5
-  );
-
-  if (tempBlur) tempBlur.delete();
-  gray.delete();
-  return thresh;
+  const gray = new cv.Mat(), thresh = new cv.Mat();
+  let rgb: any = null, filtered: any = null;
+  try {
+    if (!blur) {
+      if (image.channels() === 4) cv.cvtColor(image, gray, cv.COLOR_RGBA2GRAY);
+      else if (image.channels() === 3) cv.cvtColor(image, gray, cv.COLOR_RGB2GRAY);
+      else image.copyTo(gray);
+    } else if (image.channels() === 1) {
+      cv.medianBlur(image, gray, 5);
+    } else {
+      let colour = image;
+      if (image.channels() === 4) {
+        rgb = new cv.Mat(); cv.cvtColor(image, rgb, cv.COLOR_RGBA2RGB); colour = rgb;
+      } else if (image.channels() === 3 && !image.isContinuous()) {
+        rgb = new cv.Mat(); image.copyTo(rgb); colour = rgb;
+      }
+      if (colour.channels() === 3 && monochromeRgb(cv, colour)) {
+        cv.cvtColor(colour, gray, cv.COLOR_RGB2GRAY);
+        cv.medianBlur(gray, gray, 5);
+      } else {
+        filtered = new cv.Mat(); cv.medianBlur(colour, filtered, 5);
+        if (filtered.channels() === 3) cv.cvtColor(filtered, gray, cv.COLOR_RGB2GRAY);
+        else filtered.copyTo(gray);
+      }
+    }
+    cv.adaptiveThreshold(gray, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 27, 5);
+    return thresh;
+  } catch (error) { thresh.delete(); throw error; }
+  finally { rgb?.delete(); filtered?.delete(); gray.delete(); }
 }
 
 /**
@@ -575,24 +582,19 @@ export function set_box(
  *       boxes.append(contour_center(s_cnt))
  */
 export function slice_messy(cv: any, q_area: any, e_cnt: any, params: any, x: number, y: number, w: number, h: number, boxes: [number, number][]): void {
-  // These constructed masks contain only 0/255; RGB channels were identical.
-  const slice_mask = new cv.Mat.zeros(q_area.rows, q_area.cols, cv.CV_8UC1);
-  const drawVec = new cv.MatVector();
-  drawVec.push_back(e_cnt);
-  cv.drawContours(slice_mask, drawVec, -1, new cv.Scalar(255), -1);
-  drawVec.delete();
-
+  const bounded = boundedContourMask(cv, e_cnt, q_area.rows, q_area.cols);
+  const slice_mask = bounded.mask;
   const x_scale = Math.floor(w / params.w) + 1;
   const y_scale = Math.floor(h / params.h);
 
   for (let j = 1; j < x_scale; j++) {
     const lx = Math.floor(x + (j * w) / x_scale);
-    cv.line(slice_mask, new cv.Point(lx, y - 10), new cv.Point(lx, y + h + 10), new cv.Scalar(0), 15);
+    cv.line(slice_mask, new cv.Point(lx - bounded.x, y - 10 - bounded.y), new cv.Point(lx - bounded.x, y + h + 10 - bounded.y), new cv.Scalar(0), 15);
   }
 
   for (let k = 1; k < y_scale; k++) {
     const ly = Math.floor(y + (k * h) / y_scale);
-    cv.line(slice_mask, new cv.Point(x - 10, ly), new cv.Point(x + w + 10, ly), new cv.Scalar(0), 15);
+    cv.line(slice_mask, new cv.Point(x - 10 - bounded.x, ly - bounded.y), new cv.Point(x + w + 10 - bounded.x, ly - bounded.y), new cv.Scalar(0), 15);
   }
 
   const slice_cnts = new cv.MatVector();
@@ -600,7 +602,9 @@ export function slice_messy(cv: any, q_area: any, e_cnt: any, params: any, x: nu
   cv.findContours(slice_mask, slice_cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
   for (let i = 0; i < slice_cnts.size(); i++) {
-    const s_cnt = slice_cnts.get(i);
+    const local = slice_cnts.get(i);
+    const s_cnt = translateContour(cv, local, bounded.x, bounded.y);
+    local.delete();
     const b = cv.boundingRect(s_cnt);
     if (params.w * 0.5 <= b.width && b.width <= params.w * 1.5 && params.h * 0.5 <= b.height && b.height <= params.h * 1.5) {
       boxes.push(contour_center(cv, s_cnt));
@@ -630,13 +634,8 @@ export function slice_messy(cv: any, q_area: any, e_cnt: any, params: any, x: nu
  *     slice_messy(q_area, e_cnt, params, x, y, w, h, boxes)
  */
 export function erode_messy(cv: any, c: any, q_area: any, params: any, boxes: [number, number][]): void {
-  // Same binary erosion and kernel, without repeating it on three channels.
-  const erode_mask = new cv.Mat.zeros(q_area.rows, q_area.cols, cv.CV_8UC1);
-  const drawVec = new cv.MatVector();
-  drawVec.push_back(c);
-  cv.drawContours(erode_mask, drawVec, -1, new cv.Scalar(255), -1);
-  drawVec.delete();
-
+  const bounded = boundedContourMask(cv, c, q_area.rows, q_area.cols);
+  const erode_mask = bounded.mask;
   const kernel = cv.Mat.ones(31, 31, cv.CV_8U);
   const eroded = new cv.Mat();
   cv.erode(erode_mask, eroded, kernel, new cv.Point(-1, -1), 1);
@@ -646,7 +645,9 @@ export function erode_messy(cv: any, c: any, q_area: any, params: any, boxes: [n
   cv.findContours(eroded, erode_cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
   for (let i = 0; i < erode_cnts.size(); i++) {
-    const e_cnt = erode_cnts.get(i);
+    const local = erode_cnts.get(i);
+    const e_cnt = translateContour(cv, local, bounded.x, bounded.y);
+    local.delete();
     const b = cv.boundingRect(e_cnt);
     if (params.w * 0.5 <= b.width && b.width <= params.w * 1.5 && params.h * 0.5 <= b.height && b.height <= params.h * 1.5) {
       boxes.push(contour_center(cv, e_cnt));
