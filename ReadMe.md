@@ -244,7 +244,7 @@ optimum; page complexity, other apps and thermal throttling affect throughput.
 Setup also offers explicit 1, 2 or 4 worker overrides. Each worker owns an
 independent OpenCV/WASM heap and large 600-DPI buffers. Twenty pages do not mean
 twenty workers: only one input per active worker is prepared at a time.
-Calibration alignment and empty-box measurement run in disposable workers. Full PDF rasterization remains
+Calibration alignment and empty-box measurement share one worker per calibration screen. Full PDF rasterization remains
 serial, and supplies only the next input for each available marking worker.
 
 Results keep input/student order even when pages finish out of order. Review
@@ -362,7 +362,7 @@ or other scans, so it does not enable downsampling in normal marking.
 
 ### Relative box-position consistency
 
-Calibration records the answer-column identities. If crossing-out leaves fewer
+The first marked page records the answer-column identities. If crossing-out leaves fewer
 than three visible boxes in a column on a later page, that column can retain
 its original A–D slot instead of shifting the following letters. Restoration
 requires every reliable detected column to match a distinct calibrated slot;
@@ -387,7 +387,7 @@ recorded and reapplied to replacement results; review history stays in place,
 crops refresh, and scores/annotations are rebuilt from the final responses.
 Overall statistics reports the pages/answer boxes checked and positions moved.
 A new exam, template or question area clears the learned layout. Small batches
-still benefit from calibration anchors but cannot establish a class consensus.
+still benefit from reference-column anchors but cannot establish a class consensus.
 
 Run `npm run test:geometry-consensus` for relative-position math, translation,
 scale, jitter, outliers and divided-class safeguards. `npm run test:columns`
@@ -427,7 +427,38 @@ Sample-box display pixels and selection coordinates are independent. The preview
 crop uses canonical pointer coordinates, and both the question area and pending
 box selection transfer using the native alignment transform after any active
 gesture ends. Image upgrades keep the same canvas window and logical coordinate
-frame. Measurement always uses the full-resolution image in a worker, keeping
-the selection wheel and interface responsive. Mark Exams waits for a valid
+frame. Measurement uses the retained full-resolution image in the calibration worker,
+keeping the selection wheel and interface responsive. Mark Exams waits for a valid
 measurement; failures keep the drawn outline and show the reason. Changing stage
 or leaving calibration cancels any outstanding measurement.
+
+
+### Calibration reuse and binary cleanup masks
+
+Empty-box calibration now does only the selected-box measurement. The screen
+keeps one worker/OpenCV runtime and one aligned full-resolution Mat from page
+preparation, so repeated selections do not restart OpenCV or decode the page
+again. Leaving calibration or changing the template disposes the session. An
+interrupted native operation terminates its worker; a later retry decodes the
+saved aligned PNG once, then resumes reuse. It never retains all exam pages.
+
+Column-layout discovery is deferred to marking. When no reference is supplied,
+the first marked page supplies it from its existing box-detection result before
+later pages are dispatched. There is no separate reference-grid scan and no
+layout scan while accepting the empty box. The remaining pages use the normal
+parallel pool; Auto's timed trial starts after establishing the reference.
+
+The constructed erosion/slicing masks now use one 8-bit channel instead of
+three identical binary channels. The 31×31 kernel, iteration count, cut lines,
+size limits and global coordinates remain unchanged. Scan pixels and answer
+interpretation are unchanged. The test-only RGB implementation in
+`tests/helpers/legacyCleanup.ts` verifies the detected centres/order on all 25
+sample pages, and the IBDP page-7 regression also tests learning the reference
+during marking. Bounded contour masks are a further candidate, not part of this
+change; their halo/border behaviour needs separate parity testing.
+
+`npm run test:calibration-session` checks reuse, retries, cancellation recovery,
+stale messages and disposal. `test:calibration-preview` verifies the real worker
+is reused without another image transfer, alongside the existing pixel/gesture
+checks. `test:columns` compares binary-mask results to the RGB reference and
+checks deferred reference discovery.
