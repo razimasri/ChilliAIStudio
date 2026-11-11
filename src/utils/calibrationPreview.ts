@@ -36,3 +36,36 @@ export function alignQuestionArea(
     ),
   };
 }
+
+/** Crop display pixels independently of the canonical selection coordinates. */
+export function cropCalibrationView(
+  image: HTMLImageElement,
+  area: { x1: number; y1: number; x2: number; y2: number },
+  detail: boolean,
+): HTMLCanvasElement {
+  const width = area.x2 - area.x1,
+    height = area.y2 - area.y1;
+  const scale = detail
+    ? 1
+    : Math.min(
+        image.naturalWidth / TEMPLATE_WIDTH,
+        image.naturalHeight / TEMPLATE_HEIGHT,
+      );
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  canvas
+    .getContext('2d')!
+    .drawImage(
+      image,
+      (area.x1 * image.naturalWidth) / TEMPLATE_WIDTH,
+      (area.y1 * image.naturalHeight) / TEMPLATE_HEIGHT,
+      (width * image.naturalWidth) / TEMPLATE_WIDTH,
+      (height * image.naturalHeight) / TEMPLATE_HEIGHT,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+  return canvas;
+}

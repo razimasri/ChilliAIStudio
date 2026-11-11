@@ -1,3 +1,5 @@
+import type { CalibrationParams } from '../types';
+import type { measureSelectedBox } from './calibrationSelection';
 export interface PreparedCalibration {
   image: Blob;
   thumbnail: Blob;
@@ -5,11 +7,15 @@ export interface PreparedCalibration {
   angle: number;
 }
 /** Keep full-resolution alignment off the selection UI thread; cancel on navigation. */
-export function prepareCalibration(
-  input: Blob,
+function calibrationRequest<T>(
+  request: {
+    input: Blob;
+    params?: CalibrationParams;
+    area?: { x1: number; y1: number; x2: number; y2: number };
+  },
   signal: AbortSignal,
   progress: (message: string) => void,
-): Promise<PreparedCalibration> {
+): Promise<T> {
   signal.throwIfAborted();
   return new Promise((resolve, reject) => {
     const worker = new Worker(
@@ -17,10 +23,7 @@ export function prepareCalibration(
       { type: 'module' },
     );
     let settled = false;
-    const finish = (
-      error?: Error | DOMException,
-      result?: PreparedCalibration,
-    ) => {
+    const finish = (error?: Error | DOMException, result?: T) => {
       if (settled) return;
       settled = true;
       worker.onmessage = null;
@@ -45,9 +48,33 @@ export function prepareCalibration(
     worker.onmessageerror = () =>
       finish(new Error('Could not read background calibration output.'));
     try {
-      worker.postMessage({ input });
+      worker.postMessage(request);
     } catch (error) {
       finish(error instanceof Error ? error : new Error(String(error)));
     }
   });
+}
+
+export function prepareCalibration(
+  input: Blob,
+  signal: AbortSignal,
+  progress: (message: string) => void,
+) {
+  return calibrationRequest<PreparedCalibration>({ input }, signal, progress);
+}
+export interface MeasuredCalibration {
+  box: ReturnType<typeof measureSelectedBox>;
+  columnLayout: CalibrationParams['columnLayout'];
+}
+export function measureCalibration(
+  input: Blob,
+  params: CalibrationParams,
+  area: { x1: number; y1: number; x2: number; y2: number },
+  signal: AbortSignal,
+) {
+  return calibrationRequest<MeasuredCalibration>(
+    { input, params, area },
+    signal,
+    () => {},
+  );
 }

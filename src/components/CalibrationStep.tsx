@@ -1,21 +1,25 @@
-import { prepareCalibration } from '../utils/calibrationClient';
+import {
+  prepareCalibration,
+  measureCalibration,
+} from '../utils/calibrationClient';
 import {
   alignQuestionArea,
+  cropCalibrationView,
   CALIBRATION_PREVIEW_EDGE,
   CALIBRATION_PREVIEW_WIDTH,
 } from '../utils/calibrationPreview';
-import { measureSelectedBox } from '../utils/calibrationSelection';
 import { useCanvasPointer } from '../utils/useCanvasPointer';
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, {
+  useRef,
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+} from 'react';
 import { CalibrationParams, ExamFile } from '../types';
 import { getExamPage } from '../utils/pdfProcessor';
 import { imageUrl, releaseImage } from '../utils/imageStore';
-import { getCV } from '../utils/cvLoader';
-import {
-  renderScanMat,
-  set_box,
-  calibrateColumnLayout,
-} from '../utils/omrEngine';
+import { loadImageElement } from '../utils/omrEngine';
 import { TEMPLATE_HEIGHT, TEMPLATE_WIDTH } from '../utils/pageGeometry';
 
 interface CalibrationStepProps {
@@ -40,12 +44,22 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   latestParams.current = params;
   latestChange.current = onParamsChange;
   const qGesture = useRef(false);
+  const boxGesture = useRef(false);
+  const previewImage = useRef<{ url: string; image: HTMLImageElement } | null>(
+    null,
+  );
+  const [sampleSelection, setSampleSelection] = useState<{
+    area: { x1: number; y1: number; x2: number; y2: number };
+    frame: 'preview' | 'aligned';
+  } | null>(null);
+
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [prepared, setPrepared] = useState<{
     image: string;
     preview: string;
     rect: [number, number, number, number];
     angle: number;
+    thumbnailImage: HTMLImageElement;
   } | null>(null);
 
   // Calibration stages:
@@ -99,6 +113,9 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     setPrepared(null);
     setCanonicalTemplateDataUrl(null);
     setHasValidBox(false);
+    setSampleSelection(null);
+    setIsSnapping(false);
+    previewImage.current = null;
     const prepare = async () => {
       try {
         setPreparation('Loading a quick page preview…');
@@ -113,6 +130,9 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
             return;
           }
           releasePreview = preview.release;
+          const image = await loadImageElement(preview.url);
+          controller.signal.throwIfAborted();
+          previewImage.current = { url: preview.url, image };
           setPreviewUrl(preview.url);
           // Give React and the browser a paint before starting the larger work.
           await new Promise((resolve) =>
@@ -123,12 +143,6 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         }
         controller.signal.throwIfAborted();
         setPreparation('Preparing the 600-DPI detail view in the background…');
-        const engine = getCV();
-        // Attach a handler immediately; the result is awaited before enabling calibration.
-        const engineReady = engine.then(
-          () => ({ error: undefined as unknown }),
-          (error) => ({ error }),
-        );
         const raster = await getExamPage(
           firstFile,
           undefined,
@@ -148,13 +162,19 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         } finally {
           raster.release();
         }
-        const warmed = await engineReady;
-        if (warmed.error) throw warmed.error;
         controller.signal.throwIfAborted();
         const image = imageUrl(result.image),
           preview = imageUrl(result.thumbnail);
         owned.push(image, preview);
-        setPrepared({ image, preview, rect: result.rect, angle: result.angle });
+        const thumbnailImage = await loadImageElement(preview);
+        controller.signal.throwIfAborted();
+        setPrepared({
+          image,
+          preview,
+          rect: result.rect,
+          angle: result.angle,
+          thumbnailImage,
+        });
       } catch (error) {
         if (!controller.signal.aborted) {
           setTemplateError(
@@ -163,6 +183,10 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
               : 'Could not prepare the calibration page.',
           );
           setIsInitializingTemplate(false);
+          setIsSnapping(false);
+          setSnapStatus(
+            'Could not prepare full-resolution detail. Go back and try again.',
+          );
         }
       }
     };
@@ -178,22 +202,35 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   // the authoritative full-resolution transform, never a low-res contour fit.
   // Keep the frame stable until any active pointer gesture has ended.
   useEffect(() => {
-    if (!prepared || qGesture.current) return;
+    if (!prepared || qGesture.current || boxGesture.current) return;
     const current = latestParams.current;
+    const area =
+      current.questionAreaFrame === 'preview'
+        ? alignQuestionArea(current, prepared.angle)
+        : current;
     latestChange.current({
       ...current,
-      ...(current.questionAreaFrame === 'preview'
-        ? alignQuestionArea(current, prepared.angle)
-        : {}),
+      ...area,
       questionAreaFrame: 'aligned',
       rect: prepared.rect,
       templateDataUrl: prepared.image,
     });
+    if (sampleSelection?.frame === 'preview')
+      setSampleSelection({
+        area: alignQuestionArea(sampleSelection.area, prepared.angle),
+        frame: 'aligned',
+      });
+    previewImage.current = {
+      url: prepared.preview,
+      image: prepared.thumbnailImage,
+    };
+    if (step === 'sampleBox')
+      setQAreaImage(cropCalibrationView(prepared.thumbnailImage, area, false));
     setPreviewUrl(prepared.preview);
     setCanonicalTemplateDataUrl(prepared.image);
     setIsInitializingTemplate(false);
     setPrepared(null);
-  }, [prepared, isDrawingQ]);
+  }, [prepared, isDrawingQ, isDrawingBox]);
 
   // Draw Main Canvas (Step 1: Select Question Area on canonical template)
   const renderMainCanvas = useCallback(() => {
@@ -265,60 +302,48 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     return renderMainCanvas();
   }, [renderMainCanvas, step, isInitializingTemplate]);
 
-  // Update Cropped Question Area Canvas for Step 2
-  const updateQAreaCanvas = useCallback(() => {
-    if (step !== 'sampleBox') return;
-    const { x1, y1, x2, y2 } = params;
-    const qw = Math.abs(x2 - x1);
-    const qh = Math.abs(y2 - y1);
-    const minX = Math.min(x1, x2);
-    const minY = Math.min(y1, y2);
-
-    if (qw <= 20 || qh <= 20 || !canonicalTemplateDataUrl) return;
-
-    setQAreaImage(null);
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const qCanvas = document.createElement('canvas');
-      qCanvas.width = qw;
-      qCanvas.height = qh;
-      const qCtx = qCanvas.getContext('2d');
-      if (!qCtx) return;
-      qCtx.drawImage(img, minX, minY, qw, qh, 0, 0, qw, qh);
-      setQAreaImage(qCanvas);
-
-      // If boxCanvas is currently mounted, paint immediately to prevent blank frame
-      if (boxCanvasRef.current) {
-        boxCanvasRef.current.width = qw;
-        boxCanvasRef.current.height = qh;
-        const bCtx = boxCanvasRef.current.getContext('2d');
-        if (bCtx) {
-          bCtx.drawImage(qCanvas, 0, 0);
-        }
-      }
+  // Keep the preview visible while a sharper crop is decoded. Both displays
+  // use the same logical selection coordinates, regardless of raster size.
+  useEffect(() => {
+    if (
+      step !== 'sampleBox' ||
+      params.x2 <= params.x1 ||
+      params.y2 <= params.y1
+    )
+      return;
+    const url = canonicalTemplateDataUrl || previewUrl;
+    if (!url) return;
+    let cancelled = false;
+    const area = { x1: params.x1, y1: params.y1, x2: params.x2, y2: params.y2 };
+    const paint = (image: HTMLImageElement) => {
+      if (!cancelled)
+        setQAreaImage(
+          cropCalibrationView(image, area, !!canonicalTemplateDataUrl),
+        );
     };
-    img.onerror = () =>
-      setTemplateError(
-        'Could not prepare the selected grid. Go back and select the area again.',
-      );
-    img.src = canonicalTemplateDataUrl;
+    if (!canonicalTemplateDataUrl && previewImage.current?.url === url)
+      paint(previewImage.current.image);
+    else
+      void loadImageElement(url)
+        .then(paint)
+        .catch(() => {
+          if (!cancelled)
+            setSnapStatus(
+              'Could not load the detailed view. Go back and try again.',
+            );
+        });
     return () => {
-      img.onload = null;
-      img.onerror = null;
+      cancelled = true;
     };
   }, [
     step,
     canonicalTemplateDataUrl,
+    previewUrl,
     params.x1,
     params.y1,
     params.x2,
     params.y2,
   ]);
-
-  useEffect(() => {
-    return updateQAreaCanvas();
-  }, [updateQAreaCanvas]);
 
   useEffect(
     () => () => {
@@ -337,8 +362,12 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     canvas.width = qAreaImage.width;
     canvas.height = qAreaImage.height;
 
-    // Draw cropped question area
+    // Image pixels and logical selection coordinates are independent.
     ctx.drawImage(qAreaImage, 0, 0);
+    ctx.scale(
+      canvas.width / (params.x2 - params.x1),
+      canvas.height / (params.y2 - params.y1),
+    );
 
     // Current drag or snapped box
     let bx1 = 0;
@@ -346,11 +375,28 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     let bx2 = 0;
     let by2 = 0;
 
-    if (isDrawingBox && boxStart && boxCurrent) {
-      bx1 = Math.min(boxStart.x, boxCurrent.x);
-      by1 = Math.min(boxStart.y, boxCurrent.y);
-      bx2 = Math.max(boxStart.x, boxCurrent.x);
-      by2 = Math.max(boxStart.y, boxCurrent.y);
+    if (
+      (isDrawingBox && boxStart && boxCurrent) ||
+      (sampleSelection && !hasValidBox)
+    ) {
+      const start =
+        isDrawingBox && boxStart
+          ? boxStart
+          : {
+              x: sampleSelection!.area.x1 - params.x1,
+              y: sampleSelection!.area.y1 - params.y1,
+            };
+      const end =
+        isDrawingBox && boxCurrent
+          ? boxCurrent
+          : {
+              x: sampleSelection!.area.x2 - params.x1,
+              y: sampleSelection!.area.y2 - params.y1,
+            };
+      bx1 = Math.min(start.x, end.x);
+      by1 = Math.min(start.y, end.y);
+      bx2 = Math.max(start.x, end.x);
+      by2 = Math.max(start.y, end.y);
 
       ctx.strokeStyle = '#e11d48';
       ctx.lineWidth = 3;
@@ -390,9 +436,17 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       ctx.fillRect(cx - 2, cy - localH / 2 - 8, 4, localH + 16);
       ctx.fillRect(cx - localW / 2 - 8, cy - 2, localW + 16, 4);
     }
-  }, [qAreaImage, isDrawingBox, boxStart, boxCurrent, hasValidBox, params]);
+  }, [
+    qAreaImage,
+    isDrawingBox,
+    boxStart,
+    boxCurrent,
+    hasValidBox,
+    sampleSelection,
+    params,
+  ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     renderBoxCanvas();
   }, [renderBoxCanvas, step]);
 
@@ -434,89 +488,91 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       setZoomLevel(1.5);
     }
   };
-  const commitBox = async (
-    boxStart: { x: number; y: number },
-    boxCurrent: { x: number; y: number },
+  const commitBox = (
+    start: { x: number; y: number },
+    end: { x: number; y: number },
   ) => {
-    if (!canonicalTemplateDataUrl || isSnapping) return;
+    if (isSnapping) return;
+    const area = {
+      x1: Math.round(params.x1 + Math.min(start.x, end.x)),
+      y1: Math.round(params.y1 + Math.min(start.y, end.y)),
+      x2: Math.round(params.x1 + Math.max(start.x, end.x)),
+      y2: Math.round(params.y1 + Math.max(start.y, end.y)),
+    };
+    if (area.x2 - area.x1 <= 10 || area.y2 - area.y1 <= 10) return;
     setHasValidBox(false);
-    setSnapStatus(null);
-    const localX1 = Math.round(Math.min(boxStart.x, boxCurrent.x));
-    const localY1 = Math.round(Math.min(boxStart.y, boxCurrent.y));
-    const localX2 = Math.round(Math.max(boxStart.x, boxCurrent.x));
-    const localY2 = Math.round(Math.max(boxStart.y, boxCurrent.y));
-    const bw = localX2 - localX1;
-    const bh = localY2 - localY1;
+    setSampleSelection({
+      area,
+      frame: canonicalTemplateDataUrl ? 'aligned' : 'preview',
+    });
+    setIsSnapping(true);
+    setSnapStatus(
+      canonicalTemplateDataUrl
+        ? 'Checking the empty box…'
+        : 'Selection saved. Waiting for full-resolution detail…',
+    );
+  };
 
-    if (bw > 10 && bh > 10) {
-      setIsSnapping(true);
-      setSnapStatus('Checking the empty box…');
-
+  useEffect(() => {
+    if (
+      !isSnapping ||
+      !sampleSelection ||
+      sampleSelection.frame !== 'aligned' ||
+      !canonicalTemplateDataUrl ||
+      step !== 'sampleBox'
+    )
+      return;
+    const controller = new AbortController();
+    const selection = sampleSelection.area,
+      current = latestParams.current;
+    setSnapStatus('Checking the empty box…');
+    const measure = async () => {
       try {
-        const cv = await getCV();
-        const tMat = await renderScanMat(cv, canonicalTemplateDataUrl);
-
-        // Convert local coordinates in question area to page coordinates
-        const pageBoxX1 = params.x1 + localX1;
-        const pageBoxY1 = params.y1 + localY1;
-        const pageBoxX2 = params.x1 + localX2;
-        const pageBoxY2 = params.y1 + localY2;
-
-        let boxResult: ReturnType<typeof set_box>;
-        let columnLayout: CalibrationParams['columnLayout'];
-        try {
-          boxResult = measureSelectedBox(
-            cv,
-            tMat,
-            pageBoxX1,
-            pageBoxY1,
-            pageBoxX2,
-            pageBoxY2,
-          );
-          columnLayout = calibrateColumnLayout(cv, tMat, {
-            ...params,
-            ...boxResult,
-          });
-        } finally {
-          tMat.delete();
-        }
-
-        // Use exact detected outer contour bounding position if available, fallback to user drag
-        const detectedBoxX1 =
-          typeof boxResult.x === 'number' ? boxResult.x : pageBoxX1;
-        const detectedBoxY1 =
-          typeof boxResult.y === 'number' ? boxResult.y : pageBoxY1;
-
-        onParamsChange({
-          ...params,
-          columnLayout,
-          box_x1: detectedBoxX1,
-          box_y1: detectedBoxY1,
-          box_x2: detectedBoxX1 + boxResult.w,
-          box_y2: detectedBoxY1 + boxResult.h,
-          w: boxResult.w,
-          h: boxResult.h,
-          outer: boxResult.outer,
-          inner: boxResult.inner,
-          fill_limit: boxResult.fill_limit,
-          text_shift: boxResult.text_shift,
-          font_size: boxResult.font_size,
+        const response = await fetch(canonicalTemplateDataUrl, {
+          signal: controller.signal,
         });
-
+        if (!response.ok) throw new Error('Could not read the detailed page.');
+        const { box, columnLayout } = await measureCalibration(
+          await response.blob(),
+          current,
+          selection,
+          controller.signal,
+        );
+        controller.signal.throwIfAborted();
+        const x = typeof box.x === 'number' ? box.x : selection.x1;
+        const y = typeof box.y === 'number' ? box.y : selection.y1;
+        latestChange.current({
+          ...latestParams.current,
+          columnLayout,
+          box_x1: x,
+          box_y1: y,
+          box_x2: x + box.w,
+          box_y2: y + box.h,
+          w: box.w,
+          h: box.h,
+          outer: box.outer,
+          inner: box.inner,
+          fill_limit: box.fill_limit,
+          text_shift: box.text_shift,
+          font_size: box.font_size,
+        });
         setHasValidBox(true);
         setSnapStatus('Empty box ready');
-      } catch (err: any) {
-        console.error('Error during set_box:', err);
-        setSnapStatus(
-          err instanceof Error
-            ? err.message
-            : 'Could not extract the box contour. Please select another empty box.',
-        );
+      } catch (error) {
+        if (!controller.signal.aborted)
+          setSnapStatus(
+            error instanceof Error
+              ? error.message
+              : 'Could not measure the empty box. Try another box.',
+          );
       } finally {
-        setIsSnapping(false);
+        if (!controller.signal.aborted) setIsSnapping(false);
       }
-    }
-  };
+    };
+    void measure();
+    return () => controller.abort();
+  }, [isSnapping, sampleSelection, canonicalTemplateDataUrl, step]);
+
   const mainPointer = useCanvasPointer({
     mode: tool,
     disabled: !previewUrl || !!templateError,
@@ -533,8 +589,13 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   const boxPointer = useCanvasPointer({
     mode: tool,
     disabled: isSnapping,
+    coordinateSize: {
+      width: params.x2 - params.x1,
+      height: params.y2 - params.y1,
+    },
     viewport: workspaceRef,
     onPreview: (start, end, drawing) => {
+      boxGesture.current = drawing;
       setBoxStart(start);
       setBoxCurrent(end);
       setIsDrawingBox(drawing);
@@ -544,9 +605,9 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     },
   });
   const nativeWidth =
-    step === 'qArea' ? TEMPLATE_WIDTH : qAreaImage?.width || 1;
+    step === 'qArea' ? TEMPLATE_WIDTH : Math.max(1, params.x2 - params.x1);
   const nativeHeight =
-    step === 'qArea' ? TEMPLATE_HEIGHT : qAreaImage?.height || 1;
+    step === 'qArea' ? TEMPLATE_HEIGHT : Math.max(1, params.y2 - params.y1);
   const fit = Math.min(
     1,
     Math.max(1, workspace.width - 32) / nativeWidth,
@@ -557,8 +618,16 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   const changeStep = (next: 'qArea' | 'sampleBox') => {
     setTool('draw');
     setStep(next);
-    if (next === 'qArea') setQAreaImage(null);
+    if (next === 'qArea') {
+      setQAreaImage(null);
+      setSampleSelection(null);
+      setIsSnapping(false);
+    }
     if (next === 'sampleBox') {
+      if (previewImage.current)
+        setQAreaImage(
+          cropCalibrationView(previewImage.current.image, params, false),
+        );
       const scale = Math.min(
         1,
         (workspace.width - 32) / Math.max(1, params.x2 - params.x1),
@@ -579,7 +648,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         role="region"
         aria-label="Scan workspace"
         className="order-3 lg:order-1 flex-1 min-h-0 min-w-0 overflow-auto overscroll-contain relative lg:rounded-2xl lg:border lg:border-[#571622]"
-        aria-busy={isInitializingTemplate || isSnapping}
+        aria-busy={isSnapping}
       >
         {(!previewUrl && !templateError) ||
         (step === 'sampleBox' && !qAreaImage && !templateError) ? (
@@ -631,7 +700,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                 </div>
               )}
             <div
-              className="shrink-0 m-auto shadow-xl"
+              className="relative shrink-0 m-auto shadow-xl"
               style={{
                 width: Math.max(1, Math.round(nativeWidth * fit * zoom)),
                 height: Math.max(1, Math.round(nativeHeight * fit * zoom)),
@@ -657,6 +726,13 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
               ) : (
                 <canvas
                   ref={boxCanvasRef}
+                  data-coordinate-width={Math.max(1, params.x2 - params.x1)}
+                  data-coordinate-height={Math.max(1, params.y2 - params.y1)}
+                  data-detail={
+                    qAreaImage && qAreaImage.width >= params.x2 - params.x1
+                      ? 'full'
+                      : 'preview'
+                  }
                   {...boxPointer}
                   aria-label="Empty box selection"
                   aria-describedby="canvas-help"
@@ -666,6 +742,27 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                     cursor: tool === 'pan' ? 'grab' : 'crosshair',
                   }}
                 />
+              )}
+              {step === 'sampleBox' && isSnapping && sampleSelection && (
+                <div
+                  role="status"
+                  aria-label="Calibrating selected box"
+                  className="absolute pointer-events-none flex items-center justify-center border-2 border-rose-400 bg-rose-950/10"
+                  style={{
+                    left: `${((sampleSelection.area.x1 - params.x1) / nativeWidth) * 100}%`,
+                    top: `${((sampleSelection.area.y1 - params.y1) / nativeHeight) * 100}%`,
+                    width: `${((sampleSelection.area.x2 - sampleSelection.area.x1) / nativeWidth) * 100}%`,
+                    height: `${((sampleSelection.area.y2 - sampleSelection.area.y1) / nativeHeight) * 100}%`,
+                  }}
+                >
+                  <span
+                    className="w-6 h-6 max-w-full max-h-full rounded-full border-[3px] border-rose-200/50 border-t-rose-600 animate-spin"
+                    aria-hidden="true"
+                  />
+                  <span className="sr-only">
+                    {snapStatus || 'Checking the empty box…'}
+                  </span>
+                </div>
               )}
             </div>
           </div>
@@ -708,9 +805,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
               <button
                 aria-current={step === 'sampleBox' ? 'step' : undefined}
                 disabled={
-                  isInitializingTemplate ||
-                  !!templateError ||
-                  params.x2 <= params.x1
+                  !previewUrl || !!templateError || params.x2 <= params.x1
                 }
                 onClick={() => changeStep('sampleBox')}
                 className={`min-h-11 flex-1 px-3 rounded-lg text-sm disabled:opacity-40 ${step === 'sampleBox' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
@@ -761,7 +856,12 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                   className="inline-block w-3 h-3 mr-2 border-2 border-[#571622] border-t-[#f3b0ba] rounded-full animate-spin"
                   aria-hidden="true"
                 />
-                {preparation} You can select the grid now.
+                {preparation}{' '}
+                {isSnapping
+                  ? 'Your selection is saved.'
+                  : step === 'qArea'
+                    ? 'You can select the grid now.'
+                    : 'You can select an empty box now.'}
               </p>
             )}
             <div className="flex flex-wrap items-center justify-between gap-2 lg:flex-col lg:items-stretch lg:gap-2">
@@ -854,7 +954,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
             ) : (
               <p className={hasValidBox ? 'text-emerald-300' : ''}>
                 {isSnapping
-                  ? 'Checking the empty box…'
+                  ? snapStatus || 'Checking the empty box…'
                   : snapStatus || 'Select an empty box to enable marking.'}
               </p>
             )}
@@ -863,10 +963,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
             <button
               onClick={() => changeStep('sampleBox')}
               disabled={
-                isInitializingTemplate ||
-                !!templateError ||
-                !canonicalTemplateDataUrl ||
-                params.x2 <= params.x1
+                !previewUrl || !!templateError || params.x2 <= params.x1
               }
               className="min-h-12 w-full sm:w-auto lg:w-full px-5 bg-[#8c1529] rounded-xl font-semibold disabled:opacity-40"
             >
@@ -880,6 +977,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                 !!templateError ||
                 !canonicalTemplateDataUrl ||
                 !hasValidBox ||
+                isDrawingBox ||
                 isSnapping
               }
               className="min-h-12 w-full sm:w-auto lg:w-full px-5 bg-emerald-700 rounded-xl font-semibold disabled:opacity-40"

@@ -62,8 +62,10 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           <strong className="text-white">Select one empty box.</strong> In Draw
           mode, drag around one clean, unmarked answer box. A little surrounding
           space is fine; the outline snaps to the box. Box view opens close up;
-          Fit shows the whole grid. Wait for “Empty box ready”, then choose
-          “Mark Exams”. If selection fails, zoom in and try another empty box.
+          Fit shows the whole grid. You can select while detail loads; the
+          outline stays visible with a spinner until checking finishes. Wait for
+          “Empty box ready”, then choose “Mark Exams”. If selection fails, zoom
+          in and try another empty box.
         </li>
         <li>
           <strong className="text-white">Review ambiguous answers.</strong>{' '}

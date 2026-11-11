@@ -244,7 +244,7 @@ optimum; page complexity, other apps and thermal throttling affect throughput.
 Setup also offers explicit 1, 2 or 4 worker overrides. Each worker owns an
 independent OpenCV/WASM heap and large 600-DPI buffers. Twenty pages do not mean
 twenty workers: only one input per active worker is prepared at a time.
-Calibration remains on the interface thread. Full PDF rasterization remains
+Calibration alignment and empty-box measurement run in disposable workers. Full PDF rasterization remains
 serial, and supplies only the next input for each available marking worker.
 
 Results keep input/student order even when pages finish out of order. Review
@@ -406,8 +406,10 @@ active drag finishes before the frame changes. Existing aligned selections are
 not transformed again when returning to calibration.
 
 The empty-box stage uses the full-resolution aligned image and original box
-measurement logic; Next stays disabled until that image is ready. Cropping the
-sample-box view is deferred until that stage. Navigation aborts pending raster
+measurement logic. Next opens the sample-box view immediately from the preview;
+the sharper image replaces it when ready. An early box selection retains its
+outline and an animated wheel while awaiting detail and measurement. Cropping
+the sample-box view is deferred until that stage. Navigation aborts pending raster
 work, terminates the calibration worker and releases owned preview/template URLs.
 `npm run test:calibration-preview` checks early interaction, coordinate transfer,
 full-resolution crop dimensions, all 32,832,000 template pixels and cancellation.
@@ -419,3 +421,13 @@ Blank, Unclear and Previous remain available. Once marking, consistency checks
 and required review finish, sheets are prepared and results open automatically.
 No final View results confirmation is required. A preparation error retains a
 retry action instead of repeatedly retrying in the background.
+
+
+Sample-box display pixels and selection coordinates are independent. The preview
+crop uses canonical pointer coordinates, and both the question area and pending
+box selection transfer using the native alignment transform after any active
+gesture ends. Image upgrades keep the same canvas window and logical coordinate
+frame. Measurement always uses the full-resolution image in a worker, keeping
+the selection wheel and interface responsive. Mark Exams waits for a valid
+measurement; failures keep the drawn outline and show the reason. Changing stage
+or leaving calibration cancels any outstanding measurement.
