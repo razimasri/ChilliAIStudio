@@ -518,6 +518,9 @@ try {
     viewport.scrollLeft = 0;
     viewport.scrollTop = 0;
   });
+  // This contour-based fixture locator needs native pixels; users can already
+  // select on the preview (covered by the progressive calibration regression).
+  await page.waitForFunction(() => document.querySelector('canvas[aria-label="Empty box selection"]')?.dataset.detail === 'full', null, {timeout:120000});
   // Use the visible crop's real box location after responsive layout/pen selection.
   const emptyBox = await box.evaluate(async (canvas) => {
     const { getCV } = await import('/src/utils/cvLoader.ts');

@@ -3,6 +3,7 @@ import React,{useState} from 'react';
 import{createRoot}from'react-dom/client';
 import{CalibrationStep}from'/src/components/CalibrationStep.tsx';
 import * as engine from '/src/utils/omrEngine.ts';
+import{measureSelectedBox}from'/src/utils/calibrationSelection.ts';
 import{getCV}from'/src/utils/cvLoader.ts';
 import{loadExamFile,getExamPage}from'/src/utils/pdfProcessor.ts';
 import{prepareCalibration}from'/src/utils/calibrationClient.ts';
@@ -19,5 +20,5 @@ window.mountCalibration=async(name='IGSample')=>{
  root.render(React.createElement(Harness));
 };
 window.clearCalibration=()=>{root?.unmount();root=undefined;};
-window.calibrationFixture={engine,getCV,getExamPage,prepareCalibration,alignQuestionArea,releaseAllImages};
+window.calibrationFixture={measureSelectedBox,engine,getCV,getExamPage,prepareCalibration,alignQuestionArea,releaseAllImages};
 </script></body></html>
