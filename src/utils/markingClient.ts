@@ -1,4 +1,4 @@
-import type { CalibrationParams, StudentResult } from "../types";
+import type { MarkingGeometryOptions, CalibrationParams, StudentResult } from "../types";
 import type {
   MarkingRequest,
   MarkingReply,
@@ -95,9 +95,10 @@ export class MarkingClient {
     index: number,
     params: CalibrationParams,
     progress: (message: string) => void,
+    geometry?: MarkingGeometryOptions,
   ): Promise<StudentResult> {
     const reply = await this.request(
-      { type: "mark", input, name, index, params },
+      { type: "mark", input, name, index, params, geometry },
       progress,
     );
     if (reply.type !== "marked") throw new Error("Unexpected marking reply.");

@@ -1,3 +1,5 @@
+import { preserveManualResponses } from "./grading";
+import { geometryConsensus } from "./geometryConsensus";
 import type { CalibrationParams, ExamFile, StudentResult } from "../types";
 import { getMarkingPage } from "./pdfProcessor";
 import { releaseResultImages } from "./imageStore";
@@ -32,7 +34,10 @@ export async function markBatch(
   signal: AbortSignal,
   progress: (state: MarkingProgress) => void,
   workerCount?: number,
-  onResult?: (result: StudentResult) => void,
+  onResult?: (
+    result: StudentResult,
+    previous?: StudentResult,
+  ) => StudentResult | void,
 ): Promise<StudentResult[]> {
   signal.throwIfAborted();
   if (!files.length) return [];
@@ -122,8 +127,11 @@ export async function markBatch(
                   controller.signal.throwIfAborted();
                 }
                 result.originalDataUrl = files[index].dataUrl;
-                results[index] = result;
-                onResult?.(result);
+                const published = onResult?.(result);
+                results[index] =
+                  published && typeof published === "object"
+                    ? published
+                    : result;
                 completed++;
                 active.delete(index);
                 done.add(index);
@@ -169,6 +177,108 @@ export async function markBatch(
       phase = "selected";
     } else if (automatic) phase = "selected";
     await run(files.length);
+    signal.throwIfAborted();
+    const repairs = geometryConsensus(results, params);
+    for (const result of results)
+      if (params.columnLayout && results.length >= 4)
+        result.geometryCheck = {
+          pagesCompared: results.length,
+          boxesTracked: result.questions.reduce(
+            (sum, q) => sum + q.boxes.length,
+            0,
+          ),
+          adjustments: repairs.get(result.index) || [],
+        };
+    // The ordinary pass already supplied all coordinates. Only anomalous pages
+    // are rasterized/read again; the native scans are never retained as a batch.
+    let repairNext = 0;
+    const affected = [...repairs.entries()];
+    jobs.length = 0;
+    for (const client of clients)
+      jobs.push(
+        (async () => {
+          while (repairNext < affected.length) {
+            controller.signal.throwIfAborted();
+            const [index, adjustments] = affected[repairNext++],
+              previous = results[index];
+            active.add(index);
+            done.delete(index);
+            const report = (message: string) =>
+              progress({
+                index,
+                completed,
+                workers: count,
+                active: [...active],
+                done: [...done],
+                message: `Checking relative box positions · Page ${index + 1}: ${message}`,
+              });
+            report(`Re-reading ${adjustments.length} anomalous box positions…`);
+            const raster = await getMarkingPage(
+              files[index],
+              controller.signal,
+            );
+            let result: StudentResult;
+            try {
+              controller.signal.throwIfAborted();
+              if (!raster.bitmap)
+                throw new Error("Could not prepare native page pixels.");
+              result = await client.mark(
+                raster.bitmap,
+                previous.name,
+                index,
+                params,
+                report,
+                {
+                  adjustments,
+                  reviewQuestions: [
+                    ...new Set([
+                      ...previous.incomplete.map((q) => q.number),
+                      ...Object.keys(previous.manualResponses || {}).map(
+                        Number,
+                      ),
+                    ]),
+                  ],
+                },
+              );
+            } finally {
+              raster.release();
+            }
+            if (controller.signal.aborted) {
+              releaseResultImages([result]);
+              controller.signal.throwIfAborted();
+            }
+            result.originalDataUrl = files[index].dataUrl;
+            result.geometryCheck = previous.geometryCheck;
+            // The callback merges any manual answers entered during background work.
+            results[index] = result;
+            try {
+              result = preserveManualResponses(result, previous, params.key);
+              results[index] = result;
+              const published = onResult?.(result, previous);
+              results[index] =
+                published && typeof published === "object" ? published : result;
+            } finally {
+              releaseResultImages([previous]);
+            }
+            active.delete(index);
+            done.add(index);
+            report("Alignment checked");
+          }
+        })().catch((error) => {
+          if (!controller.signal.aborted) {
+            failure = error;
+            cancel();
+          }
+          throw error;
+        }),
+      );
+    const repaired = await Promise.allSettled(jobs);
+    signal.throwIfAborted();
+    if (failure) throw failure;
+    const rejectedRepair = repaired.find(
+      (result) => result.status === "rejected",
+    );
+    if (rejectedRepair?.status === "rejected") throw rejectedRepair.reason;
     return results;
   } catch (error) {
     cancel();

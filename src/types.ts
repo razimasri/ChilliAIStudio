@@ -36,6 +36,17 @@ export interface DetectedQuestion {
   isCorrect?: boolean;
 }
 
+export interface BoxAdjustment {
+  question: number;
+  letter: string;
+  from: [number, number];
+  to: [number, number];
+  deviation: [number, number]; // Relative deviations in column/row spacing units.
+}
+export interface MarkingGeometryOptions {
+  adjustments?: BoxAdjustment[];
+  reviewQuestions?: number[];
+}
 export interface StudentResult {
   id: string;
   index: number;
@@ -51,6 +62,8 @@ export interface StudentResult {
   hasAmbiguity: boolean;
   incomplete: DetectedQuestion[];
   ambiguityCrops?: Record<number, string>;
+  manualResponses?: Record<number, string>;
+  geometryCheck?: { pagesCompared: number; boxesTracked: number; adjustments: BoxAdjustment[] };
 }
 
 export interface AmbiguityResolutionItem {
@@ -89,6 +102,9 @@ export interface CalibrationParams {
   names: string[];
   templateDataUrl?: string;
   totalQuestions?: number;
+
+  // Column identities learned from the calibration sheet, relative to the question area.
+  columnLayout?: { centres: number[]; choices: number };
 
   // Runtime per-page fields (calculated independently during each page's marking)
   col_avg?: number[];

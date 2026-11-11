@@ -10,6 +10,7 @@ import {
   renderScanMat,
   rotation,
   set_box,
+  calibrateColumnLayout,
 } from '../utils/omrEngine';
 import { TEMPLATE_HEIGHT, TEMPLATE_WIDTH } from '../utils/pageGeometry';
 
@@ -380,6 +381,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         y1,
         x2,
         y2,
+        columnLayout: undefined,
       });
       setZoomLevel(1.5);
     }
@@ -413,6 +415,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         const pageBoxY2 = params.y1 + localY2;
 
         let boxResult: ReturnType<typeof set_box>;
+        let columnLayout: CalibrationParams['columnLayout'];
         try {
           boxResult = measureSelectedBox(
             cv,
@@ -422,6 +425,10 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
             pageBoxX2,
             pageBoxY2,
           );
+          columnLayout = calibrateColumnLayout(cv, tMat, {
+            ...params,
+            ...boxResult,
+          });
         } finally {
           tMat.delete();
         }
@@ -434,6 +441,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 
         onParamsChange({
           ...params,
+          columnLayout,
           box_x1: detectedBoxX1,
           box_y1: detectedBoxY1,
           box_x2: detectedBoxX1 + boxResult.w,

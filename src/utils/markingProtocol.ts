@@ -1,4 +1,8 @@
-import type { CalibrationParams, StudentResult } from "../types";
+import type {
+  CalibrationParams,
+  StudentResult,
+  MarkingGeometryOptions,
+} from "../types";
 export type MarkingRequest =
   | {
       type: "mark";
@@ -6,6 +10,7 @@ export type MarkingRequest =
       name: string;
       index: number;
       params: CalibrationParams;
+      geometry?: MarkingGeometryOptions;
     }
   | { type: "annotate"; student: StudentResult; params: CalibrationParams };
 export interface PackedStudent {

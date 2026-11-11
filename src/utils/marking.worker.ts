@@ -77,6 +77,7 @@ self.onmessage = async (event: MessageEvent<MarkingRequest>) => {
         request.index,
         request.params,
         (message) => send({ type: "progress", message }),
+        request.geometry,
       );
       send({ type: "marked", result: await pack(result) });
     } else {

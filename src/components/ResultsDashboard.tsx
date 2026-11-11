@@ -71,6 +71,15 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   }, []);
 
   const currentStudent = students[selectedStudentIdx] || students[0];
+  const alignmentChecks = students.filter((student) => student.geometryCheck);
+  const alignedBoxes = alignmentChecks.reduce(
+    (sum, student) => sum + (student.geometryCheck?.boxesTracked || 0),
+    0,
+  );
+  const adjustedBoxes = alignmentChecks.reduce(
+    (sum, student) => sum + (student.geometryCheck?.adjustments.length || 0),
+    0,
+  );
 
   // Class statistics calculations
   const totalStudents = students.length;
@@ -325,6 +334,13 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
         </div>
       </div>
 
+      {activeTab === 'itemStats' && alignmentChecks.length > 0 && (
+        <p className="text-sm text-[#b1a1a4] mb-4" role="status">
+          Box alignment checked across {alignmentChecks.length} pages ·{' '}
+          {alignedBoxes} answer boxes tracked · {adjustedBoxes} positions
+          corrected and re-read.
+        </p>
+      )}
       {/* Class Metric Highlights Grid */}
       {activeTab === 'itemStats' && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
