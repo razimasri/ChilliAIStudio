@@ -1,40 +1,42 @@
-import assert from "node:assert/strict";
-import { chromium } from "playwright";
-import { createServer } from "vite";
-import { writeFile } from "node:fs/promises";
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { createServer } from 'vite';
+import { writeFile } from 'node:fs/promises';
 const server = await createServer({
-  server: { host: "127.0.0.1", port: 0, hmr: false },
+  server: { host: '127.0.0.1', port: 0, hmr: false },
 });
 await server.listen();
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH,
-  args: ["--no-sandbox", "--disable-dev-shm-usage"],
+  args: ['--no-sandbox', '--disable-dev-shm-usage'],
 });
 try {
   const page = await browser.newPage();
-  page.on("console", (m) => {
-    if (m.text().startsWith("columns:")) console.log(m.text());
+  page.on('console', (m) => {
+    if (m.text().startsWith('columns:')) console.log(m.text());
   });
-  await page.goto(server.resolvedUrls.local[0] + "tests/fixtures/worker.html");
+  await page.goto(server.resolvedUrls.local[0] + 'tests/fixtures/worker.html');
   const report = await page.evaluate(async () => {
-    const e = await import("/src/utils/omrEngine.ts");
+    const e = await import('/src/utils/omrEngine.ts');
+    const { legacy_find_boxes } =
+      await import('/tests/helpers/legacyCleanup.ts');
     const { geometryConsensus } =
-      await import("/src/utils/geometryConsensus.ts");
-    const { setup } = await import("/tests/helpers/sampleCalibration.ts");
-    const { getCV } = await import("/src/utils/cvLoader.ts");
-    const { getMarkingPage } = await import("/src/utils/pdfProcessor.ts");
-    const { MarkingClient } = await import("/src/utils/markingClient.ts");
-    const { releaseAllImages } = await import("/src/utils/imageStore.ts");
+      await import('/src/utils/geometryConsensus.ts');
+    const { setup } = await import('/tests/helpers/sampleCalibration.ts');
+    const { getCV } = await import('/src/utils/cvLoader.ts');
+    const { getMarkingPage } = await import('/src/utils/pdfProcessor.ts');
+    const { MarkingClient } = await import('/src/utils/markingClient.ts');
+    const { releaseAllImages } = await import('/src/utils/imageStore.ts');
     const cv = await getCV(),
       reports = [];
     const check = (condition, message) => {
       if (!condition) throw Error(message);
     };
-    for (const name of ["IBSample", "IGSample"]) {
+    for (const name of ['IBSample', 'IGSample']) {
       const { pages, params } = await setup(name);
       const cohort = [];
       check(
-        params.columnLayout?.centres.length === (name === "IBSample" ? 12 : 8),
+        params.columnLayout?.centres.length === (name === 'IBSample' ? 12 : 8),
         `${name}: complete calibration should identify all columns`,
       );
       check(params.columnLayout.choices === 4, `${name}: calibration choices`);
@@ -55,6 +57,11 @@ try {
         );
         try {
           const boxes = e.find_boxes(cv, roi, params);
+          const legacyBoxes = legacy_find_boxes(cv, roi, params);
+          check(
+            JSON.stringify(boxes) === JSON.stringify(legacyBoxes),
+            `${name} page ${index + 1}: single-channel cleanup changed detected centres/order`,
+          );
           const reconstruct = (layout, input = boxes) => {
             const local = { ...params, columnLayout: layout };
             const { columns, filtered_boxes } = e.sort_into_columns(
@@ -85,23 +92,23 @@ try {
               `${name} page ${index + 1}: complete grid behavior changed`,
             );
           }
-          if (name === "IBSample" && index === 6) {
+          if (name === 'IBSample' && index === 6) {
             check(
               previous.counts.length === 11,
-              "Regression no longer reproduces missing A column",
+              'Regression no longer reproduces missing A column',
             );
             check(
               current.counts.length === 12,
-              "A column identity not restored",
+              'A column identity not restored',
             );
             check(
               current.counts[8] === 2,
-              "Sparse A column should retain its two detections",
+              'Sparse A column should retain its two detections',
             );
             for (const number of [28, 29]) {
               const q = current.questions[number];
               check(
-                q.boxes.map((b) => b.letter).join("") === "ABCD",
+                q.boxes.map((b) => b.letter).join('') === 'ABCD',
                 `Question ${number + 1}: lost option`,
               );
               check(
@@ -122,14 +129,14 @@ try {
             const obscured = reconstruct(params.columnLayout, noA);
             check(
               obscured.counts[8] === 0,
-              "Fully obscured A was not kept as an empty column",
+              'Fully obscured A was not kept as an empty column',
             );
             check(
               Math.abs(
                 obscured.questions[28].boxes[0].xy[0] -
                   params.columnLayout.centres[8],
               ) < 1,
-              "Missing A placeholder shifted",
+              'Missing A placeholder shifted',
             );
             const client = new MarkingClient();
             try {
@@ -137,7 +144,7 @@ try {
               try {
                 const result = await client.mark(
                   input.bitmap,
-                  "Maya Lin",
+                  'Maya Lin',
                   index,
                   params,
                   () => {},
@@ -149,17 +156,17 @@ try {
                     JSON.stringify(
                       current.questions.map((q) => q.boxes.map((b) => b.xy)),
                     ),
-                  "Native worker grid differs",
+                  'Native worker grid differs',
                 );
                 const final = await client.annotate(result, params);
                 const image = await createImageBitmap(
                   await (await fetch(final)).blob(),
                 );
-                const canvas = document.createElement("canvas");
+                const canvas = document.createElement('canvas');
                 canvas.width = 1000;
                 canvas.height = 650;
                 canvas
-                  .getContext("2d")
+                  .getContext('2d')
                   .drawImage(
                     image,
                     params.x1 + params.columnLayout.centres[8] - 150,
@@ -171,7 +178,7 @@ try {
                     1000,
                     650,
                   );
-                window.columnRegressionCrop = canvas.toDataURL("image/png");
+                window.columnRegressionCrop = canvas.toDataURL('image/png');
                 image.close();
               } finally {
                 input.release();
@@ -196,6 +203,77 @@ try {
           lease.release();
         }
       }
+      if (name === 'IBSample') {
+        const { markBatch } = await import('/src/utils/markingBatch.ts');
+        const { MarkingClient } = await import('/src/utils/markingClient.ts');
+        const { releaseAllImages } = await import('/src/utils/imageStore.ts');
+        const original = MarkingClient.prototype.mark,
+          calls = [];
+        MarkingClient.prototype.mark = function (
+          input,
+          name,
+          index,
+          params,
+          progress,
+          geometry,
+        ) {
+          calls.push({
+            index,
+            hasLayout: !!params.columnLayout,
+            learn: !!geometry?.learnColumnLayout,
+          });
+          return original.call(
+            this,
+            input,
+            name,
+            index,
+            params,
+            progress,
+            geometry,
+          );
+        };
+        const markingParams = { ...params, columnLayout: undefined };
+        try {
+          const results = await markBatch(
+            [pages[0], pages[6]],
+            [],
+            markingParams,
+            new AbortController().signal,
+            () => {},
+            2,
+          );
+          check(
+            calls.length === 2 &&
+              !calls[0].hasLayout &&
+              calls[0].learn &&
+              calls[1].hasLayout &&
+              !calls[1].learn,
+            'Layout must be learned once during page 1 marking and supplied to later pages',
+          );
+          check(
+            results[0].learnedColumnLayout.centres.length === 12,
+            'First marked page did not establish a complete layout',
+          );
+          for (const q of results[1].questions.slice(28, 30)) {
+            check(
+              q.boxes.map((b) => b.letter).join('') === 'ABCD',
+              'Deferred layout lost an answer slot',
+            );
+            check(
+              Math.abs(q.boxes[0].xy[0] - params.columnLayout.centres[8]) <
+                params.w / 4,
+              'Deferred reference shifted A to B',
+            );
+          }
+          check(
+            markingParams.columnLayout === undefined,
+            'Marking layout leaked back into calibration input',
+          );
+        } finally {
+          MarkingClient.prototype.mark = original;
+          releaseAllImages();
+        }
+      }
       const repairs = geometryConsensus(cohort, params);
       check(
         repairs.size === 0,
@@ -211,12 +289,12 @@ try {
   if (process.env.COLUMN_REGRESSION_CROP)
     await writeFile(
       process.env.COLUMN_REGRESSION_CROP,
-      Buffer.from(crop.split(",")[1], "base64"),
+      Buffer.from(crop.split(',')[1], 'base64'),
     );
   assert.equal(report.length, 25);
   console.log(JSON.stringify(report));
   console.log(
-    "All 25 sample pages, sparse/obscured columns, complete-grid parity and native worker/final annotation passed.",
+    'All 25 sample pages, sparse/obscured columns, complete-grid parity and native worker/final annotation passed.',
   );
 } finally {
   await browser.close();

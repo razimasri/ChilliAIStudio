@@ -35,6 +35,7 @@ try {
     window.pendingMeasurements = [];
     window.liveCalibrationWorkers = new Set();
     window.workerPreviewSnapshots = [];
+    window.calibrationRequests = [];
     const NativeWorker = Worker;
     window.Worker = class extends NativeWorker {
       constructor(url, options) {
@@ -84,6 +85,14 @@ try {
       }
       get onmessage() {
         return super.onmessage;
+      }
+      postMessage(data, ...args) {
+        if (this.calibration)
+          window.calibrationRequests.push({
+            input: !!data.input,
+            measure: !!data.params,
+          });
+        super.postMessage(data, ...args);
       }
       terminate() {
         window.liveCalibrationWorkers.delete(this);
@@ -285,10 +294,9 @@ try {
     'Spinner must be inside the visible selected box',
   );
   await page.screenshot({ path: '/workspace/work/progressive-spinner.png' });
-  assert.ok(
-    (await page.evaluate(() => window.calibrationTicks)) > 5,
-    'UI animation/heartbeat stalled during calibration',
-  );
+  await page.waitForFunction(() => window.calibrationTicks > 5, null, {
+    timeout: 3000,
+  });
   await page.evaluate(() => {
     clearInterval(window.calibrationTimer);
     window.holdMeasurementReady = false;
@@ -364,7 +372,24 @@ try {
       `Preview mapping changed ${axis}`,
     );
   assert.equal(mapping.actual.questionAreaFrame, 'aligned');
-  assert.equal(mapping.workers, 0);
+  assert.equal(
+    mapping.workers,
+    1,
+    'Prepared worker should remain alive through measurement',
+  );
+  assert.equal(
+    mapping.snapshots.length,
+    1,
+    'Measurement must reuse the preparation worker',
+  );
+  assert.deepEqual(
+    await page.evaluate(() => window.calibrationRequests),
+    [
+      { input: true, measure: false },
+      { input: false, measure: true },
+    ],
+    'Measurement must reuse the retained aligned Mat without another image transfer/decode',
+  );
   assert.ok(
     mapping.snapshots[0].width <= 1200 &&
       mapping.snapshots[0].height <= 1200 &&
@@ -377,6 +402,11 @@ try {
   assert.equal(dimensions.width, mapping.actual.x2 - mapping.actual.x1);
   assert.equal(dimensions.height, mapping.actual.y2 - mapping.actual.y1);
   await page.evaluate(() => window.clearCalibration());
+  assert.equal(
+    await page.evaluate(() => window.liveCalibrationWorkers.size),
+    0,
+    'Leaving calibration must release the cached runtime and image',
+  );
   const pixels = await page.evaluate(async () => {
     const {
       engine: e,

@@ -1,7 +1,4 @@
-import {
-  prepareCalibration,
-  measureCalibration,
-} from '../utils/calibrationClient';
+import { CalibrationClient } from '../utils/calibrationClient';
 import {
   alignQuestionArea,
   cropCalibrationView,
@@ -45,6 +42,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   latestChange.current = onParamsChange;
   const qGesture = useRef(false);
   const boxGesture = useRef(false);
+  const calibration = useRef<CalibrationClient>();
   const previewImage = useRef<{ url: string; image: HTMLImageElement } | null>(
     null,
   );
@@ -105,6 +103,8 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   // Show the small raster before starting native rasterization/alignment.
   useEffect(() => {
     const controller = new AbortController();
+    const client = new CalibrationClient();
+    calibration.current = client;
     let releasePreview: (() => void) | undefined;
     const owned: string[] = [];
     setIsInitializingTemplate(true);
@@ -154,7 +154,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
             signal: controller.signal,
           });
           if (!response.ok) throw new Error('Could not read calibration page.');
-          result = await prepareCalibration(
+          result = await client.prepare(
             await response.blob(),
             controller.signal,
             setPreparation,
@@ -193,6 +193,8 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     void prepare();
     return () => {
       controller.abort();
+      client.dispose();
+      if (calibration.current === client) calibration.current = undefined;
       releasePreview?.();
       owned.forEach(releaseImage);
     };
@@ -528,12 +530,9 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     setSnapStatus('Checking the empty box…');
     const measure = async () => {
       try {
-        const response = await fetch(canonicalTemplateDataUrl, {
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error('Could not read the detailed page.');
-        const { box, columnLayout } = await measureCalibration(
-          await response.blob(),
+        const client = calibration.current;
+        if (!client) throw new Error('Calibration session is not ready.');
+        const { box } = await client.measure(
           current,
           selection,
           controller.signal,
@@ -543,7 +542,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         const y = typeof box.y === 'number' ? box.y : selection.y1;
         latestChange.current({
           ...latestParams.current,
-          columnLayout,
+          columnLayout: undefined,
           box_x1: x,
           box_y1: y,
           box_x2: x + box.w,

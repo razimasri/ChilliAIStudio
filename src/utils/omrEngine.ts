@@ -575,10 +575,11 @@ export function set_box(
  *       boxes.append(contour_center(s_cnt))
  */
 export function slice_messy(cv: any, q_area: any, e_cnt: any, params: any, x: number, y: number, w: number, h: number, boxes: [number, number][]): void {
-  const slice_mask = new cv.Mat.zeros(q_area.rows, q_area.cols, cv.CV_8UC3);
+  // These constructed masks contain only 0/255; RGB channels were identical.
+  const slice_mask = new cv.Mat.zeros(q_area.rows, q_area.cols, cv.CV_8UC1);
   const drawVec = new cv.MatVector();
   drawVec.push_back(e_cnt);
-  cv.drawContours(slice_mask, drawVec, -1, new cv.Scalar(255, 255, 255, 255), -1);
+  cv.drawContours(slice_mask, drawVec, -1, new cv.Scalar(255), -1);
   drawVec.delete();
 
   const x_scale = Math.floor(w / params.w) + 1;
@@ -586,20 +587,17 @@ export function slice_messy(cv: any, q_area: any, e_cnt: any, params: any, x: nu
 
   for (let j = 1; j < x_scale; j++) {
     const lx = Math.floor(x + (j * w) / x_scale);
-    cv.line(slice_mask, new cv.Point(lx, y - 10), new cv.Point(lx, y + h + 10), new cv.Scalar(0, 0, 0, 0), 15);
+    cv.line(slice_mask, new cv.Point(lx, y - 10), new cv.Point(lx, y + h + 10), new cv.Scalar(0), 15);
   }
 
   for (let k = 1; k < y_scale; k++) {
     const ly = Math.floor(y + (k * h) / y_scale);
-    cv.line(slice_mask, new cv.Point(x - 10, ly), new cv.Point(x + w + 10, ly), new cv.Scalar(0, 0, 0, 0), 15);
+    cv.line(slice_mask, new cv.Point(x - 10, ly), new cv.Point(x + w + 10, ly), new cv.Scalar(0), 15);
   }
-
-  const grayMask = new cv.Mat();
-  cv.cvtColor(slice_mask, grayMask, cv.COLOR_RGB2GRAY);
 
   const slice_cnts = new cv.MatVector();
   const hier = new cv.Mat();
-  cv.findContours(grayMask, slice_cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+  cv.findContours(slice_mask, slice_cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
   for (let i = 0; i < slice_cnts.size(); i++) {
     const s_cnt = slice_cnts.get(i);
@@ -611,7 +609,6 @@ export function slice_messy(cv: any, q_area: any, e_cnt: any, params: any, x: nu
   }
 
   slice_mask.delete();
-  grayMask.delete();
   slice_cnts.delete();
   hier.delete();
 }
@@ -633,22 +630,20 @@ export function slice_messy(cv: any, q_area: any, e_cnt: any, params: any, x: nu
  *     slice_messy(q_area, e_cnt, params, x, y, w, h, boxes)
  */
 export function erode_messy(cv: any, c: any, q_area: any, params: any, boxes: [number, number][]): void {
-  const erode_mask = new cv.Mat.zeros(q_area.rows, q_area.cols, cv.CV_8UC3);
+  // Same binary erosion and kernel, without repeating it on three channels.
+  const erode_mask = new cv.Mat.zeros(q_area.rows, q_area.cols, cv.CV_8UC1);
   const drawVec = new cv.MatVector();
   drawVec.push_back(c);
-  cv.drawContours(erode_mask, drawVec, -1, new cv.Scalar(255, 255, 255, 255), -1);
+  cv.drawContours(erode_mask, drawVec, -1, new cv.Scalar(255), -1);
   drawVec.delete();
 
   const kernel = cv.Mat.ones(31, 31, cv.CV_8U);
   const eroded = new cv.Mat();
   cv.erode(erode_mask, eroded, kernel, new cv.Point(-1, -1), 1);
 
-  const gray = new cv.Mat();
-  cv.cvtColor(eroded, gray, cv.COLOR_RGB2GRAY);
-
   const erode_cnts = new cv.MatVector();
   const hier = new cv.Mat();
-  cv.findContours(gray, erode_cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+  cv.findContours(eroded, erode_cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
   for (let i = 0; i < erode_cnts.size(); i++) {
     const e_cnt = erode_cnts.get(i);
@@ -664,7 +659,6 @@ export function erode_messy(cv: any, c: any, q_area: any, params: any, boxes: [n
   erode_mask.delete();
   kernel.delete();
   eroded.delete();
-  gray.delete();
   erode_cnts.delete();
   hier.delete();
 }
@@ -1532,6 +1526,10 @@ export async function processStudentScan(
 
     onProgress?.('Sorting columns and rows...');
     const { columns, filtered_boxes } = sort_into_columns(rawBoxes, pageParams);
+    const choices = pageParams.choices || 4;
+    const learnedColumnLayout = geometry?.learnColumnLayout && choices >= 2 &&
+      columns.length >= choices && columns.length % choices === 0
+      ? { centres: pageParams.col_avg!.slice(), choices } : undefined;
     sort_into_rows(filtered_boxes, pageParams);
     missing(columns, pageParams);
 
@@ -1647,6 +1645,7 @@ export async function processStudentScan(
       total,
       percentage,
       questions: studentState.questions,
+      ...(learnedColumnLayout ? {learnedColumnLayout} : {}),
       responses: studentState.responses,
       annotatedDataUrl,
       originalDataUrl: typeof scanDataUrl === 'string' ? scanDataUrl : '',

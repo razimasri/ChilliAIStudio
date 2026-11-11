@@ -44,6 +44,7 @@ export interface BoxAdjustment {
   deviation: [number, number]; // Relative deviations in column/row spacing units.
 }
 export interface MarkingGeometryOptions {
+  learnColumnLayout?: boolean;
   adjustments?: BoxAdjustment[];
   reviewQuestions?: number[];
 }
@@ -63,6 +64,7 @@ export interface StudentResult {
   incomplete: DetectedQuestion[];
   ambiguityCrops?: Record<number, string>;
   manualResponses?: Record<number, string>;
+  learnedColumnLayout?: CalibrationParams['columnLayout'];
   geometryCheck?: { pagesCompared: number; boxesTracked: number; adjustments: BoxAdjustment[] };
 }
 
@@ -104,7 +106,7 @@ export interface CalibrationParams {
   templateDataUrl?: string;
   totalQuestions?: number;
 
-  // Column identities learned from the calibration sheet, relative to the question area.
+  // Reference columns learned during marking, relative to the question area.
   columnLayout?: { centres: number[]; choices: number };
 
   // Runtime per-page fields (calculated independently during each page's marking)

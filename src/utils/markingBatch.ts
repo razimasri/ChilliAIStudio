@@ -41,6 +41,8 @@ export async function markBatch(
 ): Promise<StudentResult[]> {
   signal.throwIfAborted();
   if (!files.length) return [];
+  params = { ...params }; // Batch-local reference learned from the first marked page.
+  const needsReference = !params.columnLayout && files.length > 1;
   const automatic = workerCount === undefined;
   const plan = workerPlan(files);
   let count = Math.min(
@@ -118,6 +120,9 @@ export async function markBatch(
                     index,
                     params,
                     report,
+                    index === 0 && !params.columnLayout
+                      ? { learnColumnLayout: true }
+                      : undefined,
                   );
                 } finally {
                   raster.release();
@@ -126,6 +131,8 @@ export async function markBatch(
                   releaseResultImages([result]);
                   controller.signal.throwIfAborted();
                 }
+                if (index === 0 && result.learnedColumnLayout)
+                  params.columnLayout = result.learnedColumnLayout;
                 result.originalDataUrl = files[index].dataUrl;
                 const published = onResult?.(result);
                 results[index] =
@@ -155,8 +162,11 @@ export async function markBatch(
       if (rejected?.status === "rejected") throw rejected.reason;
     };
     grow(count);
-    if (automatic && plan.canTrial) {
-      await run(Math.min(files.length, count)); // Warm the existing runtimes first.
+    // Detect page 1 once; its complete column identities protect all later pages.
+    // Empty-box calibration no longer scans the grid or duplicates this work.
+    if (needsReference) await run(1);
+    if (automatic && plan.canTrial && workerPlan(files.slice(next)).canTrial) {
+      await run(Math.min(files.length, next + count)); // Warm the existing runtimes first.
       phase = "baseline";
       let started = performance.now(),
         before = completed;
