@@ -1,6 +1,7 @@
-// RGB-mask reference from PR16, retained to verify exact cleanup geometry.
+// Full-grid RGB masks from PR16 and the pre-optimization RGBA blur.
+// Keep these independent of production filtering to verify exact pixel/geometry parity.
 import type { CalibrationParams } from '../../src/types';
-import { get_thresh, contour_center, area } from '../../src/utils/omrEngine';
+import { contour_center, area } from '../../src/utils/omrEngine';
 export function legacy_slice_messy(
   cv: any,
   q_area: any,
@@ -158,7 +159,7 @@ export function legacy_find_boxes(
   params: CalibrationParams,
 ): [number, number][] {
   const boxes: [number, number][] = [];
-  const thresh = get_thresh(cv, q_area, true);
+  const thresh = legacy_get_thresh(cv, q_area, true);
 
   const cnts = new cv.MatVector();
   const hier = new cv.Mat();
@@ -217,4 +218,38 @@ export function legacy_find_boxes(
   cnts.delete();
 
   return boxes;
+}
+
+export function legacy_get_thresh(cv: any, image: any, blur = true): any {
+  let processed = image;
+  let tempBlur: any = null;
+  if (blur) {
+    tempBlur = new cv.Mat();
+    cv.medianBlur(image, tempBlur, 5);
+    processed = tempBlur;
+  }
+
+  const gray = new cv.Mat();
+  if (processed.channels() === 4) {
+    cv.cvtColor(processed, gray, cv.COLOR_RGBA2GRAY);
+  } else if (processed.channels() === 3) {
+    cv.cvtColor(processed, gray, cv.COLOR_RGB2GRAY);
+  } else {
+    processed.copyTo(gray);
+  }
+
+  const thresh = new cv.Mat();
+  cv.adaptiveThreshold(
+    gray,
+    thresh,
+    255,
+    cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+    cv.THRESH_BINARY_INV,
+    27,
+    5
+  );
+
+  if (tempBlur) tempBlur.delete();
+  gray.delete();
+  return thresh;
 }
