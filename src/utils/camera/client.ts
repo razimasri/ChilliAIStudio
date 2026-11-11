@@ -46,7 +46,8 @@ export class CameraClient {
       if (this.closed) throw new Error('Camera session closed.');
       this.fallback ||= new CameraProcessor();
       const scanner = this.fallback;
-      const result = request.type === 'capture' ? await scanner.capture(request.input)
+      const result = request.type === 'inspect' ? await scanner.inspect(request.frame)
+        : request.type === 'capture' ? await scanner.capture(request.input, request.upright)
         : request.type === 'prepare' ? await scanner.prepare(request.input)
         : request.type === 'preview' ? await scanner.preview(request.corners, request.rotation)
         : await scanner.export(request.corners, request.rotation);

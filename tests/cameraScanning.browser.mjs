@@ -48,7 +48,7 @@ try {
           let blob;
           if(variant==='overhead') {
             // The batch path must normalize/read answers exactly like single-page correction.
-            const captured=await client.request({type:'capture',input},()=>{});
+            const captured=await client.request({type:'capture',input,upright:true},()=>{});
             blob=captured.image;
             check(captured.thumbnail.size>0,'batch thumbnail missing');
           } else {

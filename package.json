@@ -28,7 +28,9 @@
     "test:cleanup": "node tests/cleanupOptimizations.browser.mjs",
     "test:camera": "node tests/cameraScanning.browser.mjs",
     "test:camera-interface": "node tests/cameraInterface.browser.mjs",
-    "test:batch-camera": "node tests/batchCamera.browser.mjs"
+    "test:batch-camera": "node tests/batchCamera.browser.mjs",
+    "test:auto-gate": "node tests/autoCapture.mjs",
+    "test:auto-camera": "node tests/autoCamera.browser.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "^5.0.0-release.1",

@@ -40,3 +40,14 @@ export async function photograph(video: HTMLVideoElement, track: MediaStreamTrac
     return await canvasBlob(canvas);
   } finally { canvas.width = canvas.height = 0; }
 }
+
+/** Only a tiny canvas is read back during automatic detection, never the full video. */
+export function detectionFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): ImageData {
+  if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) throw new Error('Camera is not ready');
+  const factor = Math.min(1, 480 / Math.max(video.videoWidth, video.videoHeight));
+  canvas.width = Math.round(video.videoWidth * factor); canvas.height = Math.round(video.videoHeight * factor);
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('Camera preview analysis is unavailable');
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return context.getImageData(0, 0, canvas.width, canvas.height);
+}
