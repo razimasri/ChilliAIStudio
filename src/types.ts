@@ -85,6 +85,7 @@ export interface CalibrationParams {
   y1: number;
   x2: number;
   y2: number;
+  questionAreaFrame?: 'preview' | 'aligned';
   // Selection box coordinates on canonical 4800x6840 page
   box_x1: number;
   box_y1: number;

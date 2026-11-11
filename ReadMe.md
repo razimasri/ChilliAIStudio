@@ -394,3 +394,28 @@ scale, jitter, outliers and divided-class safeguards. `npm run test:columns`
 checks all 25 bundled IBDP/IGCSE sample pages, including native worker/final
 annotation on IBDP page 7. `npm run test:geometry-repair` exercises selective
 native reprocessing, answer/score updates and manual-answer preservation.
+
+### Preview-first calibration and direct review
+
+Question-area selection paints a 1200-pixel preview before preparing the
+600-DPI page. Its canvas stays small; pointer positions map to the existing
+4800×6840 coordinate frame. The original full-resolution template alignment
+runs in a disposable worker while selection remains interactive. Its measured
+rotation transfers an early selection by transforming all four corners. An
+active drag finishes before the frame changes. Existing aligned selections are
+not transformed again when returning to calibration.
+
+The empty-box stage uses the full-resolution aligned image and original box
+measurement logic; Next stays disabled until that image is ready. Cropping the
+sample-box view is deferred until that stage. Navigation aborts pending raster
+work, terminates the calibration worker and releases owned preview/template URLs.
+`npm run test:calibration-preview` checks early interaction, coordinate transfer,
+full-resolution crop dimensions, all 32,832,000 template pixels and cancellation.
+Use `CALIBRATION_TEST_BUILD=1` to exercise built worker/chunk URLs.
+
+Answer review uses the selectable scan regions without a duplicate row of
+letter buttons. Tab/Enter and answer-letter shortcuts work alongside touch;
+Blank, Unclear and Previous remain available. Once marking, consistency checks
+and required review finish, sheets are prepared and results open automatically.
+No final View results confirmation is required. A preparation error retains a
+retry action instead of repeatedly retrying in the background.

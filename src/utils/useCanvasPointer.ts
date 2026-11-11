@@ -3,12 +3,14 @@ type Point = { x: number; y: number };
 export function useCanvasPointer({
   mode,
   disabled,
+  coordinateSize,
   viewport,
   onPreview,
   onCommit,
 }: {
   mode: 'draw' | 'pan';
   disabled?: boolean;
+  coordinateSize?: { width: number; height: number };
   viewport: React.RefObject<HTMLDivElement>;
   onPreview: (start: Point, end: Point, drawing: boolean) => void;
   onCommit: (start: Point, end: Point) => void;
@@ -23,21 +25,17 @@ export function useCanvasPointer({
   } | null>(null);
   const point = (event: ReactPointerEvent<HTMLCanvasElement>): Point => {
     const canvas = event.currentTarget,
-      rect = canvas.getBoundingClientRect();
+      rect = canvas.getBoundingClientRect(),
+      width = coordinateSize?.width || canvas.width,
+      height = coordinateSize?.height || canvas.height;
     return {
       x: Math.max(
         0,
-        Math.min(
-          canvas.width,
-          ((event.clientX - rect.left) * canvas.width) / rect.width,
-        ),
+        Math.min(width, ((event.clientX - rect.left) * width) / rect.width),
       ),
       y: Math.max(
         0,
-        Math.min(
-          canvas.height,
-          ((event.clientY - rect.top) * canvas.height) / rect.height,
-        ),
+        Math.min(height, ((event.clientY - rect.top) * height) / rect.height),
       ),
     };
   };
