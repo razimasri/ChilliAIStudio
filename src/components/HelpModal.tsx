@@ -42,6 +42,8 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           PNG or JPEG files, or use a sample. Scan at 600 DPI where possible.
           For a phone photo, choose Scan with Camera, keep the full sheet visible,
           check the corrected preview and adjust corners or rotation before confirming.
+          For a stack, use Batch Scan to capture sheets consecutively, then Finish
+          Scanning to review and confirm the batch before calibration.
           Sample PDFs include their own names and answer keys: 27 answers for
           IGCSE, 30 for IBDP.
         </li>

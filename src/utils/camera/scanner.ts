@@ -10,8 +10,9 @@ export interface ScanPreview {
   warnings: string[];
   error?: string;
 }
+export interface CapturedPage { image: Blob; thumbnail: Blob; warnings: string[] }
 export interface PreparedPhoto extends ScanPreview { original: Blob; width: number; height: number; needsCorners: boolean }
-export type ScanRequest = { type: 'prepare'; input: Blob } | { type: 'preview' | 'export'; corners: Corners; rotation: number };
+export type ScanRequest = { type: 'prepare'; input: Blob } | { type: 'capture'; input: Blob } | { type: 'preview' | 'export'; corners: Corners; rotation: number };
 const DEFAULT_CORNERS: Corners = [{ x: .06, y: .06 }, { x: .94, y: .06 }, { x: .94, y: .94 }, { x: .06, y: .94 }];
 
 /** Separate camera-only preprocessing; no changes to answer interpretation. */
@@ -157,6 +158,21 @@ export class CameraProcessor {
         warnings.push('The page is close to the photograph edge. Confirm no part of the sheet is missing.');
       return { preview: await this.encode(corrected), corners, rotation, warnings, error };
     } finally { corrected.delete(); gray.delete(); lap.delete(); mean.delete(); std.delete(); }
+  }
+  /** Batch capture reuses detection and quality checks, without accepting default corners. */
+  async capture(input: Blob): Promise<CapturedPage> {
+    try {
+      const prepared = await this.prepare(input);
+      if (prepared.needsCorners)
+        throw new Error('No complete page boundary detected. Keep all four corners visible on a contrasting surface and capture again. Earlier sheets are unchanged.');
+      if (prepared.error) throw new Error(prepared.error);
+      const full = this.warp(prepared.corners, prepared.rotation);
+      let image: Blob;
+      try { image = await this.encode(full); } finally { full.delete(); }
+      const small = this.warp(prepared.corners, prepared.rotation, 240);
+      try { return { image, thumbnail: await this.encode(small), warnings: prepared.warnings }; }
+      finally { small.delete(); }
+    } finally { this.dispose(); }
   }
   async export(corners: Corners, rotation: number): Promise<Blob> {
     // Validate the same geometry/quality at confirmation; never silently export stale corners.

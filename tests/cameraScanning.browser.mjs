@@ -45,10 +45,17 @@ try {
         const input = await encode(photo); photo.delete();
         const client = new CameraClient();
         try {
-          let prepared = await client.request({type:'prepare',input},()=>{});
-          check(!prepared.error, `${name}/${variant}: ${prepared.error}`);
-          // Geometric orientation is automatic; semantic upside-down is resolved in preview.
-          const blob = await client.request({type:'export',corners:prepared.corners,rotation:prepared.rotation},()=>{});
+          let blob;
+          if(variant==='overhead') {
+            // The batch path must normalize/read answers exactly like single-page correction.
+            const captured=await client.request({type:'capture',input},()=>{});
+            blob=captured.image;
+            check(captured.thumbnail.size>0,'batch thumbnail missing');
+          } else {
+            const prepared = await client.request({type:'prepare',input},()=>{});
+            check(!prepared.error, `${name}/${variant}: ${prepared.error}`);
+            blob = await client.request({type:'export',corners:prepared.corners,rotation:prepared.rotation},()=>{});
+          }
           const correctedPages = await loadExamFile(new File([blob],'camera.png',{type:'image/png'}));
           check(correctedPages[0].width===4800 && correctedPages[0].height===6840,'canonical dimensions');
           const correctedLease = await getExamPage(correctedPages[0]);

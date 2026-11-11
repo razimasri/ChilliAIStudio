@@ -24,11 +24,11 @@ try {
       isMobile: width < 500,
     });
     await page.goto(origin);
-    assert.match(await page.title(), /v2.0 Birdseye/);
+    assert.match(await page.title(), /v2.2 Birdseye/);
     await page.getByRole('button', { name: 'Guide', exact: true }).click();
     const guide = page.getByRole('dialog', { name: 'ChilliMark Guide' });
     await guide.waitFor();
-    await guide.getByText('v2.0 Birdseye', { exact: true }).waitFor();
+    await guide.getByText('v2.2 Birdseye', { exact: true }).waitFor();
     assert.equal(
       await guide
         .getByText(/fine-tuning handles|Load 10 Demo|Mark Threshold/)
@@ -487,6 +487,7 @@ try {
   await next.click();
   const box = page.getByLabel('Empty box selection', { exact: true });
   await box.waitFor();
+  await page.waitForFunction(element => element.getBoundingClientRect().width > 1000, await box.elementHandle());
   assert.ok(
     (await box.boundingBox()).width > 1000,
     'Empty-box view should open close up',

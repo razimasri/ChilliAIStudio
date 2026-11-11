@@ -1,5 +1,5 @@
 ![ChilliMark Logo](/icons/Banner.png)
-# ChilliMark — v2.0 Birdseye
+# ChilliMark — v2.2 Birdseye
 
 
 ChilliMark Heuristical Identification of Landmark-Less Input Multiple-choice Answer Recognition Kernel
@@ -18,6 +18,12 @@ are optional: blank names produce Student 01, Student 02, and so on. If names
 are supplied, enter exactly one per page. Removing a page removes its matching
 name when the counts agree. Real uploads never insert the sample names.
 Samples include 27 IGCSE or 30 IBDP answers.
+
+For phone photos, choose Scan with Camera for one sheet or Batch Scan for a
+stack. Batch Scan keeps the camera open between captures. Finish Scanning
+opens review with previews, retakes, removal and rotation; Confirm batch adds
+the pages to the normal collection before calibration or marking. See
+[Camera scanning notes](docs/camera-scanning.md) for device requirements.
 
 Calibration supports mouse, finger and pen. Use Draw to frame the answer grid,
 review it, then choose Next: Select Box. Use Pan to move a zoomed page and the
