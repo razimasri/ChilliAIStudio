@@ -1,5 +1,6 @@
 import {
   CalibrationParams,
+  MarkingGeometryOptions,
   ContourPoint,
   DetectedQuestion,
   QuestionBox,
@@ -819,7 +820,37 @@ export function sort_into_columns(
     prev_x = x;
   }
 
+  const detectedColumns = columns;
   columns = columns.filter((c) => c.length > 2);
+
+  // Crossing-out can leave fewer than three detectable boxes in a real column.
+  // Dropping that entire column would relabel B as A. Only restore identities
+  // from a complete calibrated layout, and only when every reliable column
+  // matches a distinct slot. Normal complete scans retain their existing path.
+  let restoredCentres: number[] | undefined;
+  const layout = params.columnLayout;
+  if (layout && columns.length >= 2 && columns.length < layout.centres.length) {
+    const anchored: [number, number][][] = layout.centres.map(() => []);
+    const occupied = new Set<number>();
+    let valid = true;
+    for (const column of detectedColumns) {
+      const x = column.reduce((sum, box) => sum + box[0], 0) / column.length;
+      let slot = 0;
+      for (let i = 1; i < layout.centres.length; i++) {
+        if (Math.abs(x - layout.centres[i]) < Math.abs(x - layout.centres[slot])) slot = i;
+      }
+      const matches = Math.abs(x - layout.centres[slot]) <= params.w / 2;
+      if (column.length > 2) {
+        if (!matches || occupied.has(slot)) valid = false;
+        occupied.add(slot);
+      }
+      if (matches) anchored[slot].push(...column);
+    }
+    if (valid) {
+      columns = anchored;
+      restoredCentres = layout.centres;
+    }
+  }
 
   const col_avg: number[] = [];
   for (let c = 0; c < columns.length; c++) {
@@ -828,6 +859,8 @@ export function sort_into_columns(
     if (x_pos.length > 0) {
       const avg = x_pos.reduce((sum, v) => sum + v, 0) / x_pos.length;
       col_avg.push(Math.floor(avg));
+    } else if (restoredCentres) {
+      col_avg.push(restoredCentres[c]);
     }
   }
 
@@ -850,8 +883,27 @@ export function sort_into_columns(
     params.choices = 4;
   }
 
+  if (restoredCentres) params.choices = layout!.choices;
   const filtered_boxes = columns.flat();
   return { columns, filtered_boxes };
+}
+
+/** Learn column identities while the complete calibration grid is available. */
+export function calibrateColumnLayout(
+  cv: any, template: any, params: CalibrationParams
+): CalibrationParams['columnLayout'] {
+  const x1 = Math.max(0, Math.min(template.cols - 50, params.x1));
+  const y1 = Math.max(0, Math.min(template.rows - 50, params.y1));
+  const x2 = Math.max(x1 + 50, Math.min(template.cols, params.x2));
+  const y2 = Math.max(y1 + 50, Math.min(template.rows, params.y2));
+  const roi = template.roi(new cv.Rect(x1, y1, x2 - x1, y2 - y1));
+  try {
+    const measured = { ...params, columnLayout: undefined };
+    const { columns } = sort_into_columns(find_boxes(cv, roi, measured), measured);
+    const choices = measured.choices || 4;
+    if (choices < 2 || columns.length < choices || columns.length % choices !== 0) return undefined;
+    return { centres: measured.col_avg!.slice(), choices };
+  } finally { roi.delete(); }
 }
 
 /**
@@ -1434,7 +1486,8 @@ export async function processStudentScan(
   studentName: string,
   studentIndex: number,
   params: CalibrationParams,
-  onProgress?: (step: string) => void
+  onProgress?: (step: string) => void,
+  geometry?: MarkingGeometryOptions,
 ): Promise<StudentResult> {
   onProgress?.('Loading scan at original resolution...');
   const pageMat = await renderScanMat(cv, scanDataUrl);
@@ -1483,6 +1536,11 @@ export async function processStudentScan(
 
     onProgress?.('Constructing questions and detecting responses...');
     const questions = find_questions(columns, pageParams);
+    for (const adjustment of geometry?.adjustments || []) {
+      const question = questions.find(q => q.number === adjustment.question);
+      const box = question?.boxes.find(b => b.letter === adjustment.letter);
+      if (box) box.xy = [...adjustment.to];
+    }
 
     const studentState: {
       name: string;
@@ -1507,9 +1565,9 @@ export async function processStudentScan(
     studentState.score = calculateScore(studentState.responses, pageParams.key);
 
     const hasAmbiguity = studentState.incomplete.length > 0;
-    // A clean copy is only needed by pages awaiting manual review.
+    // Keep clean pixels for manual review or a geometry-repaired page.
     let rawDeskewedDataUrl: string | undefined;
-    if (hasAmbiguity) {
+    if (hasAmbiguity || geometry?.adjustments?.length) {
       const cleanCanvas = createRasterCanvas();
       drawMat(cv, cleanCanvas, scaledScan);
       try { rawDeskewedDataUrl = await canvasImage(cleanCanvas); outputImages.push(rawDeskewedDataUrl); }
@@ -1569,7 +1627,8 @@ export async function processStudentScan(
     }
 
     const ambiguityCrops: Record<number, string> = {};
-    for (const q of studentState.incomplete) {
+    const reviewNumbers = new Set([...studentState.incomplete.map(q => q.number), ...(geometry?.reviewQuestions || [])]);
+    for (const q of studentState.questions.filter(q => reviewNumbers.has(q.number))) {
       ambiguityCrops[q.number] = await get_correction_crop(cv, scaledScan, q, pageParams);
       outputImages.push(ambiguityCrops[q.number]);
     }

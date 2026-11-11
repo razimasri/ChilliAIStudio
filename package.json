@@ -19,7 +19,10 @@
     "test:desktop": "node tests/desktopLayout.browser.mjs",
     "test:worker-policy": "node tests/workerPolicy.mjs",
     "test:resolution": "node tests/resolutionComparison.browser.mjs",
-    "test:throughput": "node tests/markingThroughput.browser.mjs"
+    "test:throughput": "node tests/markingThroughput.browser.mjs",
+    "test:columns": "node tests/crossedOutColumns.browser.mjs",
+    "test:geometry-consensus": "node tests/geometryConsensus.mjs",
+    "test:geometry-repair": "node tests/geometryRepair.browser.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "^5.0.0-release.1",

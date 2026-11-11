@@ -23,7 +23,11 @@ import {
 import { markBatch } from './utils/markingBatch';
 import { reviewItem } from './utils/reviewQueue';
 import { MarkingClient } from './utils/markingClient';
-import { gradeStudent, resolveStudentResponse } from './utils/grading';
+import {
+  gradeStudent,
+  resolveStudentResponse,
+  preserveManualResponses,
+} from './utils/grading';
 import { calculateQuestionStats, decodeCVError } from './utils/omrEngine';
 
 export function App() {
@@ -169,7 +173,7 @@ export function App() {
     setPageErrors([]);
     setMarkingStatusText('Starting background marking…');
     try {
-      await markBatch(
+      const checkedResults = await markBatch(
         files,
         activeParams.names,
         activeParams,
@@ -185,18 +189,48 @@ export function App() {
           );
         },
         markingConcurrency === 'auto' ? undefined : markingConcurrency,
-        (result) => {
+        (incoming, previous) => {
           if (sessionRef.current !== session || controller.signal.aborted)
             return;
+          let result = incoming;
+          if (previous) {
+            result = preserveManualResponses(
+              result,
+              session.results[result.index],
+              activeParams.key,
+            );
+            // Keep review history and cursor stable while refreshing repaired crops.
+            session.queue = session.queue.map((item) => {
+              if (item.studentIndex !== result.index) return item;
+              const question = result.questions.find(
+                (q) => q.number === item.questionNumber - 1,
+              );
+              if (!question) return item;
+              return {
+                ...reviewItem(result, question, activeParams),
+                currentResponse: result.responses[question.number],
+              };
+            });
+          }
           session.results[result.index] = result;
-          // Review completed pages as they arrive; final results stay indexed by input page.
-          for (const question of result.incomplete)
-            session.queue.push(reviewItem(result, question, activeParams));
+          for (const question of result.incomplete) {
+            if (
+              !session.queue.some(
+                (item) =>
+                  item.studentIndex === result.index &&
+                  item.questionNumber === question.number + 1,
+              )
+            )
+              session.queue.push(reviewItem(result, question, activeParams));
+          }
           syncReview(session);
+          return result;
         },
       );
       controller.signal.throwIfAborted();
       if (sessionRef.current !== session) return;
+      for (const result of checkedResults)
+        session.results[result.index].geometryCheck = result.geometryCheck;
       session.done = true;
       setBatchDone(true);
       syncReview(session);
@@ -330,6 +364,7 @@ export function App() {
       y2: 0,
       w: 0,
       h: 0,
+      columnLayout: undefined,
     }));
     setCurrentStep(1);
     setFiles([]);
@@ -367,6 +402,7 @@ export function App() {
                   box_y2: 0,
                   w: 0,
                   h: 0,
+                  columnLayout: undefined,
                 }));
               }
               setFiles(next);

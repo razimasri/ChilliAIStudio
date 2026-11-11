@@ -359,3 +359,38 @@ uses the existing full-resolution pixels.
 The initial four-page resolution trial matched all 108 answers and all four
 scores. That small sample does not establish safety for faint marks, erasures
 or other scans, so it does not enable downsampling in normal marking.
+
+### Relative box-position consistency
+
+Calibration records the answer-column identities. If crossing-out leaves fewer
+than three visible boxes in a column on a later page, that column can retain
+its original A–D slot instead of shifting the following letters. Restoration
+requires every reliable detected column to match a distinct calibrated slot;
+complete detected grids retain their existing path. This fixes the missing A
+column on IBDP sample page 7, questions 29–30.
+
+After normal marking, batches of at least four pages also compare every marked
+answer-box position across the exam. Each question block is normalized using
+its own column/row spacing and translation. A shifted or scaled page therefore
+does not count as a misplaced box. Each slot uses a robust mean across pages;
+outlying observations are excluded rather than pulling the class grid toward
+a crossed-out page. Corrections require at least three agreeing observations,
+and deviations must exceed all three tolerances: 12% of row/column spacing,
+a quarter of calibrated box size, and six median absolute deviations. The
+spacing floor prevents ordinary scan variation in thin IGCSE boxes being forced.
+
+Only anomalous pages are rasterized and marked again, using the corrected
+positions and the existing fill/ambiguity/grading rules. Native scans are not
+held for the whole exam and there is no second image pass for healthy pages.
+Live review continues during this check. Manual responses are explicitly
+recorded and reapplied to replacement results; review history stays in place,
+crops refresh, and scores/annotations are rebuilt from the final responses.
+Overall statistics reports the pages/answer boxes checked and positions moved.
+A new exam, template or question area clears the learned layout. Small batches
+still benefit from calibration anchors but cannot establish a class consensus.
+
+Run `npm run test:geometry-consensus` for relative-position math, translation,
+scale, jitter, outliers and divided-class safeguards. `npm run test:columns`
+checks all 25 bundled IBDP/IGCSE sample pages, including native worker/final
+annotation on IBDP page 7. `npm run test:geometry-repair` exercises selective
+native reprocessing, answer/score updates and manual-answer preservation.

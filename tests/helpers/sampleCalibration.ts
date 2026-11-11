@@ -86,6 +86,7 @@ export async function setup(name = "IGSample") {
     key: Object.fromEntries(Array.from({ length: 40 }, (_, i) => [i, "A"])),
     names: [],
   };
+  params.columnLayout = engine.calibrateColumnLayout(cv, rotated, params);
   rotated.delete();
   params.key = Object.fromEntries(
     Array.from({ length: name === "IGSample" ? 27 : 30 }, (_, i) => [i, "A"]),
