@@ -1,0 +1,11 @@
+<!doctype html><html><head><title>Camera scan regression</title></head><body><script type="module">
+import * as e from '/src/utils/omrEngine.ts';
+import { setup } from '/tests/helpers/sampleCalibration.ts';
+import { getCV } from '/src/utils/cvLoader.ts';
+import { getExamPage, loadExamFile, releaseUnusedSources } from '/src/utils/pdfProcessor.ts';
+import { CameraClient } from '/src/utils/camera/client.ts';
+import { CameraProcessor } from '/src/utils/camera/scanner.ts';
+import { drawMat } from '/src/utils/rasterIO.ts';
+import { releaseResultImages } from '/src/utils/imageStore.ts';
+window.cameraFixture = { e, setup, getCV, getExamPage, loadExamFile, releaseUnusedSources, CameraClient, CameraProcessor, drawMat, releaseResultImages };
+</script></body></html>
