@@ -25,7 +25,9 @@
     "test:geometry-repair": "node tests/geometryRepair.browser.mjs",
     "test:calibration-preview": "node tests/calibrationPreview.browser.mjs",
     "test:calibration-session": "node tests/calibrationSession.mjs",
-    "test:cleanup": "node tests/cleanupOptimizations.browser.mjs"
+    "test:cleanup": "node tests/cleanupOptimizations.browser.mjs",
+    "test:camera": "node tests/cameraScanning.browser.mjs",
+    "test:camera-interface": "node tests/cameraInterface.browser.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "^5.0.0-release.1",

@@ -163,7 +163,7 @@ try {
       c.width = c.height = 20;
       return c.toDataURL('image/png').split(',')[1];
     });
-    await page.locator('input[type="file"]').setInputFiles({
+    await page.getByLabel('Exam scan files', { exact: true }).setInputFiles({
       name: 'personal.png',
       mimeType: 'image/png',
       buffer: Buffer.from(personalPng, 'base64'),
@@ -183,7 +183,7 @@ try {
     );
     assert.equal(await proceed.isDisabled(), true);
     await page.getByLabel('Answer key', { exact: true }).fill('ABC');
-    await page.locator('input[type="file"]').setInputFiles({
+    await page.getByLabel('Exam scan files', { exact: true }).setInputFiles({
       name: 'more-personal.png',
       mimeType: 'image/png',
       buffer: Buffer.from(personalPng, 'base64'),
@@ -281,7 +281,7 @@ try {
     ctx.fillRect(1025, 1925, 65, 50);
     return canvas.toDataURL('image/png').split(',')[1];
   });
-  await page.locator('input[type="file"]').setInputFiles([
+  await page.getByLabel('Exam scan files', { exact: true }).setInputFiles([
     {
       name: 'one.png',
       mimeType: 'image/png',

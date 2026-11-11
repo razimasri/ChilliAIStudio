@@ -40,6 +40,8 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
         <li>
           <strong className="text-white">Load your scans.</strong> Choose PDF,
           PNG or JPEG files, or use a sample. Scan at 600 DPI where possible.
+          For a phone photo, choose Scan with Camera, keep the full sheet visible,
+          check the corrected preview and adjust corners or rotation before confirming.
           Sample PDFs include their own names and answer keys: 27 answers for
           IGCSE, 30 for IBDP.
         </li>
