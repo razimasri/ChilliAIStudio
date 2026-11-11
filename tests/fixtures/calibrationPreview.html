@@ -1,0 +1,23 @@
+<!doctype html><html><head><title>Preview-first calibration regression</title></head><body><div id="root"></div><script type="module">
+import React,{useState} from 'react';
+import{createRoot}from'react-dom/client';
+import{CalibrationStep}from'/src/components/CalibrationStep.tsx';
+import * as engine from '/src/utils/omrEngine.ts';
+import{getCV}from'/src/utils/cvLoader.ts';
+import{loadExamFile,getExamPage}from'/src/utils/pdfProcessor.ts';
+import{prepareCalibration}from'/src/utils/calibrationClient.ts';
+import{alignQuestionArea}from'/src/utils/calibrationPreview.ts';
+import{releaseAllImages}from'/src/utils/imageStore.ts';
+import '/src/index.css';
+let root;
+window.mountCalibration=async(name='IGSample')=>{
+ const source=new File([await(await fetch(`/samples/${name}.pdf`)).blob()],`${name}.pdf`,{type:'application/pdf'});
+ const pages=await loadExamFile(source);window.calibrationFile=pages[0];
+ root=createRoot(document.getElementById('root'));
+ function Harness(){const[params,setParams]=useState({rect:[0,0,4800,6840],x1:0,y1:0,x2:0,y2:0,box_x1:0,box_y1:0,box_x2:0,box_y2:0,w:0,h:0,outer:[],inner:[],fill_limit:0,text_shift:[0,0],font_size:1,key:{},names:[]});window.calibrationParams=params;
+ return React.createElement(CalibrationStep,{firstFile:pages[0],params,onParamsChange:setParams,onBack:()=>root.unmount(),onProceedToMark:()=>{}});}
+ root.render(React.createElement(Harness));
+};
+window.clearCalibration=()=>{root?.unmount();root=undefined;};
+window.calibrationFixture={engine,getCV,getExamPage,prepareCalibration,alignQuestionArea,releaseAllImages};
+</script></body></html>

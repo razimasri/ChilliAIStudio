@@ -1,14 +1,18 @@
+import { prepareCalibration } from '../utils/calibrationClient';
+import {
+  alignQuestionArea,
+  CALIBRATION_PREVIEW_EDGE,
+  CALIBRATION_PREVIEW_WIDTH,
+} from '../utils/calibrationPreview';
 import { measureSelectedBox } from '../utils/calibrationSelection';
 import { useCanvasPointer } from '../utils/useCanvasPointer';
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { CalibrationParams, ExamFile } from '../types';
 import { getExamPage } from '../utils/pdfProcessor';
-import { canvasImage, releaseImage } from '../utils/imageStore';
+import { imageUrl, releaseImage } from '../utils/imageStore';
 import { getCV } from '../utils/cvLoader';
 import {
-  renderToCanonicalMat,
   renderScanMat,
-  rotation,
   set_box,
   calibrateColumnLayout,
 } from '../utils/omrEngine';
@@ -31,6 +35,18 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 }) => {
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const boxCanvasRef = useRef<HTMLCanvasElement>(null);
+  const latestParams = useRef(params);
+  const latestChange = useRef(onParamsChange);
+  latestParams.current = params;
+  latestChange.current = onParamsChange;
+  const qGesture = useRef(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [prepared, setPrepared] = useState<{
+    image: string;
+    preview: string;
+    rect: [number, number, number, number];
+    angle: number;
+  } | null>(null);
 
   // Calibration stages:
   // Stage 1: "Select the question area"
@@ -72,111 +88,127 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 
   const [templateError, setTemplateError] = useState<string | null>(null);
 
-  // Initialize canonical template & calculate calibration sheet's largest contour rect (Python lines 384-387)
+  // Show the small raster before starting native rasterization/alignment.
   useEffect(() => {
-    let isCancelled = false;
     const controller = new AbortController();
-    let templateUrl: string | undefined;
-    async function initTemplate() {
-      setIsInitializingTemplate(true);
-      setTemplateError(null);
-      setCanonicalTemplateDataUrl(null);
-      setHasValidBox(false);
+    let releasePreview: (() => void) | undefined;
+    const owned: string[] = [];
+    setIsInitializingTemplate(true);
+    setTemplateError(null);
+    setPreviewUrl(null);
+    setPrepared(null);
+    setCanonicalTemplateDataUrl(null);
+    setHasValidBox(false);
+    const prepare = async () => {
       try {
-        setPreparation('Loading the marking engine…');
-        const cv = await getCV();
-        if (isCancelled) return;
-        setPreparation('Rendering the first page at 600 DPI…');
-        let rotatedMat: any = null;
+        setPreparation('Loading a quick page preview…');
+        try {
+          const preview = await getExamPage(
+            firstFile,
+            CALIBRATION_PREVIEW_EDGE,
+            controller.signal,
+          );
+          if (controller.signal.aborted) {
+            preview.release();
+            return;
+          }
+          releasePreview = preview.release;
+          setPreviewUrl(preview.url);
+          // Give React and the browser a paint before starting the larger work.
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          );
+        } catch (error) {
+          if (controller.signal.aborted) return;
+        }
+        controller.signal.throwIfAborted();
+        setPreparation('Preparing the 600-DPI detail view in the background…');
+        const engine = getCV();
+        // Attach a handler immediately; the result is awaited before enabling calibration.
+        const engineReady = engine.then(
+          () => ({ error: undefined as unknown }),
+          (error) => ({ error }),
+        );
         const raster = await getExamPage(
           firstFile,
           undefined,
           controller.signal,
         );
-        let rawMat: any;
+        let result;
         try {
-          rawMat = await renderToCanonicalMat(cv, raster.url);
+          const response = await fetch(raster.url, {
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error('Could not read calibration page.');
+          result = await prepareCalibration(
+            await response.blob(),
+            controller.signal,
+            setPreparation,
+          );
         } finally {
           raster.release();
         }
-        setPreparation('Aligning the first page…');
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        let sheetRect: [number, number, number, number];
-        try {
-          const rotRes = rotation(cv, rawMat);
-          rotatedMat = rotRes.rotated;
-          sheetRect = rotRes.rect;
-        } finally {
-          rawMat.delete();
-        }
-
-        if (isCancelled) {
-          if (rotatedMat) rotatedMat.delete();
-          return;
-        }
-
-        const canvas = document.createElement('canvas');
-        cv.imshow(canvas, rotatedMat);
-        rotatedMat.delete();
-
-        let dataUrl: string;
-        try {
-          dataUrl = await canvasImage(canvas);
-        } finally {
-          canvas.width = 0;
-          canvas.height = 0;
-        }
-        if (isCancelled) {
-          releaseImage(dataUrl);
-          return;
-        }
-        templateUrl = dataUrl;
-        canvas.width = 0;
-        canvas.height = 0;
-        setCanonicalTemplateDataUrl(dataUrl);
-
-        onParamsChange({
-          ...params,
-          rect: sheetRect, // [rx, ry, rw, rh] from calibration sheet
-          templateDataUrl: dataUrl,
-        });
-      } catch (e: any) {
-        console.error('Failed to initialize calibration template:', e);
-        if (!isCancelled) {
-          // A raw 600-DPI page is not in template coordinates. Do not let a
-          // failed initialization accept selections in a different frame.
+        const warmed = await engineReady;
+        if (warmed.error) throw warmed.error;
+        controller.signal.throwIfAborted();
+        const image = imageUrl(result.image),
+          preview = imageUrl(result.thumbnail);
+        owned.push(image, preview);
+        setPrepared({ image, preview, rect: result.rect, angle: result.angle });
+      } catch (error) {
+        if (!controller.signal.aborted) {
           setTemplateError(
-            e?.message || 'Could not align the calibration page.',
+            error instanceof Error
+              ? error.message
+              : 'Could not prepare the calibration page.',
           );
+          setIsInitializingTemplate(false);
         }
-      } finally {
-        if (!isCancelled) setIsInitializingTemplate(false);
       }
-    }
-
-    initTemplate();
+    };
+    void prepare();
     return () => {
-      isCancelled = true;
       controller.abort();
-      releaseImage(templateUrl);
+      releasePreview?.();
+      owned.forEach(releaseImage);
     };
   }, [firstFile.id, firstFile.rotation, firstFile.dataUrl]);
+
+  // A preview selection is in the unaligned template frame. Upgrade it using
+  // the authoritative full-resolution transform, never a low-res contour fit.
+  // Keep the frame stable until any active pointer gesture has ended.
+  useEffect(() => {
+    if (!prepared || qGesture.current) return;
+    const current = latestParams.current;
+    latestChange.current({
+      ...current,
+      ...(current.questionAreaFrame === 'preview'
+        ? alignQuestionArea(current, prepared.angle)
+        : {}),
+      questionAreaFrame: 'aligned',
+      rect: prepared.rect,
+      templateDataUrl: prepared.image,
+    });
+    setPreviewUrl(prepared.preview);
+    setCanonicalTemplateDataUrl(prepared.image);
+    setIsInitializingTemplate(false);
+    setPrepared(null);
+  }, [prepared, isDrawingQ]);
 
   // Draw Main Canvas (Step 1: Select Question Area on canonical template)
   const renderMainCanvas = useCallback(() => {
     const canvas = mainCanvasRef.current;
-    if (!canvas || !canonicalTemplateDataUrl) return;
+    if (!canvas || !previewUrl) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      canvas.width = TEMPLATE_WIDTH;
-      canvas.height = TEMPLATE_HEIGHT;
-
-      // Draw canonical 4800x6840 deskewed scan
-      ctx.drawImage(img, 0, 0);
+      canvas.width = CALIBRATION_PREVIEW_WIDTH;
+      canvas.height = CALIBRATION_PREVIEW_EDGE;
+      ctx.scale(canvas.width / TEMPLATE_WIDTH, canvas.height / TEMPLATE_HEIGHT);
+      ctx.drawImage(img, 0, 0, TEMPLATE_WIDTH, TEMPLATE_HEIGHT);
 
       // Current drag or existing Q-Area
       let x1 = params.x1;
@@ -194,10 +226,10 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       if (x2 > x1 && y2 > y1) {
         // Dim area outside selection
         ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-        ctx.fillRect(0, 0, canvas.width, y1);
-        ctx.fillRect(0, y2, canvas.width, canvas.height - y2);
+        ctx.fillRect(0, 0, TEMPLATE_WIDTH, y1);
+        ctx.fillRect(0, y2, TEMPLATE_WIDTH, TEMPLATE_HEIGHT - y2);
         ctx.fillRect(0, y1, x1, y2 - y1);
-        ctx.fillRect(x2, y1, canvas.width - x2, y2 - y1);
+        ctx.fillRect(x2, y1, TEMPLATE_WIDTH - x2, y2 - y1);
 
         // Dashed bounding rectangle matching Gui.py
         ctx.strokeStyle = '#f3b0ba';
@@ -214,12 +246,12 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         ctx.fillText('Question Area', x1 + 20, Math.max(42, y1 - 18));
       }
     };
-    img.src = canonicalTemplateDataUrl;
+    img.src = previewUrl;
     return () => {
       img.onload = null;
     };
   }, [
-    canonicalTemplateDataUrl,
+    previewUrl,
     params.x1,
     params.y1,
     params.x2,
@@ -235,6 +267,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
 
   // Update Cropped Question Area Canvas for Step 2
   const updateQAreaCanvas = useCallback(() => {
+    if (step !== 'sampleBox') return;
     const { x1, y1, x2, y2 } = params;
     const qw = Math.abs(x2 - x1);
     const qh = Math.abs(y2 - y1);
@@ -274,11 +307,25 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       img.onload = null;
       img.onerror = null;
     };
-  }, [canonicalTemplateDataUrl, params.x1, params.y1, params.x2, params.y2]);
+  }, [
+    step,
+    canonicalTemplateDataUrl,
+    params.x1,
+    params.y1,
+    params.x2,
+    params.y2,
+  ]);
 
   useEffect(() => {
     return updateQAreaCanvas();
   }, [updateQAreaCanvas]);
+
+  useEffect(
+    () => () => {
+      if (qAreaImage) qAreaImage.width = qAreaImage.height = 0;
+    },
+    [qAreaImage],
+  );
 
   // Draw Sample Box Canvas (Step 2: Select One Empty Box)
   const renderBoxCanvas = useCallback(() => {
@@ -382,6 +429,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         x2,
         y2,
         columnLayout: undefined,
+        questionAreaFrame: canonicalTemplateDataUrl ? 'aligned' : 'preview',
       });
       setZoomLevel(1.5);
     }
@@ -471,9 +519,11 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   };
   const mainPointer = useCanvasPointer({
     mode: tool,
-    disabled: isInitializingTemplate || !!templateError,
+    disabled: !previewUrl || !!templateError,
+    coordinateSize: { width: TEMPLATE_WIDTH, height: TEMPLATE_HEIGHT },
     viewport: workspaceRef,
     onPreview: (start, end, drawing) => {
+      qGesture.current = drawing;
       setQStart(start);
       setQCurrent(end);
       setIsDrawingQ(drawing);
@@ -507,6 +557,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   const changeStep = (next: 'qArea' | 'sampleBox') => {
     setTool('draw');
     setStep(next);
+    if (next === 'qArea') setQAreaImage(null);
     if (next === 'sampleBox') {
       const scale = Math.min(
         1,
@@ -530,7 +581,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         className="order-3 lg:order-1 flex-1 min-h-0 min-w-0 overflow-auto overscroll-contain relative lg:rounded-2xl lg:border lg:border-[#571622]"
         aria-busy={isInitializingTemplate || isSnapping}
       >
-        {isInitializingTemplate ||
+        {(!previewUrl && !templateError) ||
         (step === 'sampleBox' && !qAreaImage && !templateError) ? (
           <div role="status" className="p-8 text-center">
             <span
@@ -589,8 +640,11 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
               {step === 'qArea' ? (
                 <canvas
                   ref={mainCanvasRef}
-                  width={TEMPLATE_WIDTH}
-                  height={TEMPLATE_HEIGHT}
+                  width={CALIBRATION_PREVIEW_WIDTH}
+                  height={CALIBRATION_PREVIEW_EDGE}
+                  data-frame={canonicalTemplateDataUrl ? 'aligned' : 'preview'}
+                  data-coordinate-width={TEMPLATE_WIDTH}
+                  data-coordinate-height={TEMPLATE_HEIGHT}
                   {...mainPointer}
                   aria-label="Question area selection"
                   aria-describedby="canvas-help"
@@ -697,6 +751,19 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                 ? 'Draw a rectangle around the complete answer grid, then choose Next.'
                 : 'Draw around one empty box. A little surrounding space is fine; the outline snaps to the box.'}
             </p>
+            {isInitializingTemplate && previewUrl && !templateError && (
+              <p
+                id="calibration-preparation"
+                role="status"
+                className="text-sm text-[#b1a1a4]"
+              >
+                <span
+                  className="inline-block w-3 h-3 mr-2 border-2 border-[#571622] border-t-[#f3b0ba] rounded-full animate-spin"
+                  aria-hidden="true"
+                />
+                {preparation} You can select the grid now.
+              </p>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-2 lg:flex-col lg:items-stretch lg:gap-2">
               <div
                 className="flex items-center gap-1"

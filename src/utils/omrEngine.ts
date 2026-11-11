@@ -218,7 +218,7 @@ export function normaliseDeskewAngle(rawAngle: number): number {
 export function rotation(
   cv: any,
   inputPage: any
-): { rotated: any; image: any; rect: [number, number, number, number] } {
+): { rotated: any; image: any; rect: [number, number, number, number]; angle: number } {
   // Match Python rotation(): retain the native page dimensions through deskew.
   // Orientation changes are explicit in the upload UI, before calibration.
   const page = inputPage;
@@ -238,6 +238,7 @@ export function rotation(
     return {
       image: rotated,
       rotated,
+      angle,
       rect: [bounding.x, bounding.y, bounding.width, bounding.height],
     };
   } catch (error) {

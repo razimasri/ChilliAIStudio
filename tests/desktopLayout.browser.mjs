@@ -115,6 +115,15 @@ try {
     name: 'Next: Select Box',
     exact: true,
   });
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll('button')].some(
+        (button) =>
+          button.textContent === 'Next: Select Box' && !button.disabled,
+      ),
+    null,
+    { timeout: 120000 },
+  );
   assert.equal(await next.isEnabled(), true);
   await next.click();
   await page.getByLabel('Empty box selection', { exact: true }).waitFor();

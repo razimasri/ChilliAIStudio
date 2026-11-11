@@ -34,6 +34,22 @@ export function AmbiguityModal({
     { length: item.choicesCount || optionsCount },
     (_, i) => String.fromCharCode(65 + i),
   );
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat)
+        return;
+      const target = event.target as HTMLElement;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]'))
+        return;
+      const letter = event.key.toUpperCase();
+      if (letters.includes(letter)) {
+        event.preventDefault();
+        onResolve(letter);
+      }
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [item.studentIndex, item.questionNumber, letters.join(''), onResolve]);
   return (
     <Dialog titleId="review-title" className="max-w-2xl p-4 sm:p-6 space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -58,8 +74,8 @@ export function AmbiguityModal({
         {backgroundStatus}
       </p>
       <p className="text-sm text-[#b1a1a4]">
-        Click or tap an answer on the scan or a letter below to save it and go
-        next. Previous lets you revise a decision. Use Unclear if you cannot
+        Click or tap an answer on the scan, or press its letter, to save it and
+        go next. Previous lets you revise a decision. Use Unclear if you cannot
         determine the intended answer.
       </p>
       <div
@@ -130,26 +146,9 @@ export function AmbiguityModal({
           </div>
         ) : (
           <p className="text-black text-sm">
-            No snippet available. Use the letter buttons below.
+            No snippet available. Press an answer letter or choose Unclear.
           </p>
         )}
-      </div>
-      <div
-        className="grid gap-2"
-        style={{
-          gridTemplateColumns: `repeat(${Math.min(letters.length, 5)},minmax(0,1fr))`,
-        }}
-      >
-        {letters.map((letter) => (
-          <button
-            key={letter}
-            aria-pressed={choice === letter}
-            onClick={() => choose(letter)}
-            className={`min-h-12 rounded-xl font-bold text-lg border ${choice === letter ? 'bg-[#8c1529] border-white' : 'bg-[#571622] border-[#8c1529]'}`}
-          >
-            {letter}
-          </button>
-        ))}
       </div>
       <div className="grid grid-cols-2 gap-2">
         {['Unclear', 'Blank'].map((value) => (

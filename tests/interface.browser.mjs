@@ -233,6 +233,17 @@ try {
     ['B'],
     'Clicking the scanned answer should save immediately',
   );
+  assert.equal(
+    await desktopReview.getByRole('button', { name: /^[A-D]$/ }).count(),
+    0,
+    'Standalone letter buttons should be removed',
+  );
+  await desktopReview.keyboard.press('C');
+  assert.deepEqual(
+    await desktopReview.evaluate(() => window.selections),
+    ['B', 'C'],
+    'Letter shortcuts should remain available',
+  );
   await desktopReview.close();
   const page = await browser.newPage({
     viewport: { width: 390, height: 844 },
@@ -296,9 +307,6 @@ try {
   await page.getByLabel('Answer key', { exact: true }).fill('AAAAAAAAAAAA');
   await page.getByRole('button', { name: 'Continue to calibration' }).click();
   const area = page.getByLabel('Question area selection', { exact: true });
-  await page
-    .getByText('Loading the marking engine…', { exact: true })
-    .waitFor();
   await area.waitFor({ timeout: 120000 });
   await page
     .getByText('Drag to frame the answer grid', { exact: true })
@@ -316,8 +324,12 @@ try {
       (el, { x, y }) => {
         const r = el.getBoundingClientRect();
         return {
-          x: r.x + (x / el.width) * r.width,
-          y: r.y + (y / el.height) * r.height,
+          x:
+            r.x +
+            (x / (Number(el.dataset.coordinateWidth) || el.width)) * r.width,
+          y:
+            r.y +
+            (y / (Number(el.dataset.coordinateHeight) || el.height)) * r.height,
         };
       },
       { x, y },
@@ -365,6 +377,15 @@ try {
     'Cancelled touch must not commit',
   );
   await touchDrag(area, [500, 1100], [4300, 6000]);
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll('button')].some(
+        (button) =>
+          button.textContent === 'Next: Select Box' && !button.disabled,
+      ),
+    null,
+    { timeout: 120000 },
+  );
   assert.equal(await next.isEnabled(), true);
   assert.equal(
     await page.getByLabel('Empty box selection', { exact: true }).count(),
@@ -583,7 +604,7 @@ try {
   await review.getByRole('heading', { name: /Student 01/ }).waitFor();
   assert.equal(
     await review
-      .getByRole('button', { name: 'A', exact: true })
+      .getByRole('button', { name: 'Choose A on scan', exact: true })
       .getAttribute('aria-pressed'),
     'true',
   );
@@ -592,21 +613,13 @@ try {
     .click();
   await review.getByRole('heading', { name: /Student 02/ }).waitFor();
   await review.getByRole('button', { name: 'Unclear', exact: true }).click();
-  await page
-    .getByRole('button', { name: 'View results', exact: true })
-    .waitFor({ timeout: 120000 });
-  await page
-    .getByRole('button', { name: 'Previous correction', exact: true })
-    .click();
-  await review.getByRole('heading', { name: /Student 02/ }).waitFor();
   assert.equal(
-    await review
-      .getByRole('button', { name: 'Unclear', exact: true })
-      .getAttribute('aria-pressed'),
-    'true',
+    await page
+      .getByRole('button', { name: 'View results', exact: true })
+      .count(),
+    0,
+    'Results must open without a confirmation button',
   );
-  await review.getByRole('button', { name: 'Next', exact: true }).click();
-  await page.getByRole('button', { name: 'View results', exact: true }).click();
   await page
     .getByRole('heading', { name: 'Class Overview & Question Analysis' })
     .waitFor({ timeout: 120000 });

@@ -54,7 +54,9 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           <strong className="text-white">Select the question area.</strong> Drag
           around the complete answer grid on the first page using a mouse,
           finger or pen. Review the rectangle, then choose “Next: Select Box”.
-          Use Pan to move a zoomed page and the zoom buttons to magnify it.
+          Use Pan to move a zoomed page and the zoom buttons to magnify it. You
+          can draw on the quick preview while the detailed page prepares in the
+          background; Next becomes available when it is ready.
         </li>
         <li>
           <strong className="text-white">Select one empty box.</strong> In Draw
@@ -66,10 +68,11 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
         <li>
           <strong className="text-white">Review ambiguous answers.</strong>{' '}
           Review starts as pages become available while marking continues. Click
-          or tap an answer on the scan, or choose its letter, Blank or Unclear.
-          Your choice saves and goes next immediately. Previous revisits a
-          decision. When all pages and corrections are ready, choose View
-          results. Cancel review returns to setup.
+          or tap an answer on the scan, press its letter, or choose Blank or
+          Unclear. Your choice saves and goes next immediately. Previous
+          revisits a decision. Results open automatically when all pages,
+          alignment checks and answer reviews are complete. Cancel review
+          returns to setup.
         </li>
         <li>
           <strong className="text-white">Review and export.</strong> Results

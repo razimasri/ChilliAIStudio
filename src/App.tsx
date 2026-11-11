@@ -331,6 +331,26 @@ export function App() {
     }
   };
 
+  useEffect(() => {
+    if (currentStep !== 3 || !batchDone || finalizing || pageErrors.length)
+      return;
+    const session = sessionRef.current;
+    if (
+      !session ||
+      session.cursor < session.queue.length ||
+      session.queue.some((item) => !item.currentResponse)
+    )
+      return;
+    void finishReview();
+  }, [
+    currentStep,
+    batchDone,
+    currentAmbiguityIdx,
+    ambiguityQueue,
+    finalizing,
+    pageErrors,
+  ]);
+
   const finishMarking = (
     results: StudentResult[],
     calibParams: CalibrationParams,
@@ -459,7 +479,7 @@ export function App() {
               {finalizing
                 ? markingStatusText
                 : batchDone
-                  ? 'All corrections reviewed. Ready to view results.'
+                  ? 'Preparing results…'
                   : 'Corrections up to date. More pages are marking in the background…'}
             </p>
             <button
@@ -469,13 +489,15 @@ export function App() {
             >
               Previous correction
             </button>
-            {batchDone && (
+            {pageErrors.length > 0 && !finalizing && (
               <button
-                disabled={finalizing || pageErrors.length > 0}
-                onClick={finishReview}
-                className="min-h-12 px-5 rounded-xl bg-emerald-700 font-bold disabled:opacity-40"
+                onClick={() => {
+                  setPageErrors([]);
+                  void finishReview();
+                }}
+                className="min-h-12 px-5 rounded-xl bg-emerald-700 font-bold"
               >
-                {finalizing ? 'Preparing results…' : 'View results'}
+                Retry preparing results
               </button>
             )}
           </div>
