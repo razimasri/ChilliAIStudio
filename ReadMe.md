@@ -19,7 +19,7 @@ are supplied, enter exactly one per page. Removing a page removes its matching
 name when the counts agree. Real uploads never insert the sample names.
 Samples include 27 IGCSE or 30 IBDP answers.
 
-For phone photos, choose Scan with Camera for one sheet or Batch Scan for a
+For phone photos, choose Camera Scan for one sheet or Batch Scan for a
 stack. Batch Scan keeps the camera open between captures. Finish Scanning
 opens review with previews, retakes, removal and rotation; Confirm batch adds
 the pages to the normal collection before calibration or marking. Auto Scan

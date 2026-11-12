@@ -4,7 +4,7 @@ Camera capture is an additional, browser-only input path. PDF and scanned-image 
 
 ## Integration
 
-`UploadAndInputStep` exposes **Scan with Camera** through a separate native file input (`accept="image/*"`, `capture="environment"`). Android/iOS browsers may offer the rear camera; desktop browsers can choose an existing photograph. The browser owns camera permissions. Cancelling the picker leaves the exam unchanged; the normal **Choose files** input remains available.
+`UploadAndInputStep` exposes **Camera Scan** through a separate native file input (`accept="image/*"`, `capture="environment"`). Android/iOS browsers may offer the rear camera; desktop browsers can choose an existing photograph. The browser owns camera permissions. Cancelling the picker leaves the exam unchanged; the normal **Choose files** input remains available.
 
 The scanner UI and processing runtime are loaded only after a photograph is selected. The scanner:
 

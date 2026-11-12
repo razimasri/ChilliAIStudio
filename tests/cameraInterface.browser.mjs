@@ -24,7 +24,7 @@ try {
   assert.equal(await capture.getAttribute('accept'),'image/*');
   assert.equal(await page.getByLabel('Exam scan files',{exact:true}).getAttribute('capture'),null);
   assert.equal(await page.evaluate(()=>window.cameraWorkers.size),0,'camera must be lazy');
-  await page.getByRole('button',{name:'Scan with Camera',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Camera Scan',exact:true}).waitFor();
   const png=await page.evaluate(() => {
     const canvas=document.createElement('canvas');canvas.width=2400;canvas.height=3400;
     const ctx=canvas.getContext('2d');ctx.fillStyle='#253540';ctx.fillRect(0,0,2400,3400);

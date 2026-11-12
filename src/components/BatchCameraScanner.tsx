@@ -69,7 +69,7 @@ export default function BatchCameraScanner({ onClose, onConfirm, initialAuto = f
     void (async () => {
       try {
         if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia)
-          throw new Error('Live batch capture needs camera support and a secure HTTPS connection. Use Scan with Camera or Choose files instead.');
+          throw new Error('Live batch capture needs camera support and a secure HTTPS connection. Use Camera Scan or Choose files instead.');
         current = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
           facingMode: { ideal: 'environment' }, width: { ideal: 4096 }, height: { ideal: 3072 },
         } });

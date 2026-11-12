@@ -454,7 +454,7 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
                   className="min-h-11 px-4 rounded-xl border border-[#8c1529] hover:bg-[#8c1529]/20 font-semibold flex items-center gap-2 transition-colors"
                 >
                   <Camera size={20} />
-                  Scan with Camera
+                  Camera Scan
                 </button>
                 <button
                   onClick={() => { setAutoStart(false); setBatchScanning(true); }}

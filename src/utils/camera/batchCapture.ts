@@ -14,10 +14,10 @@ export function placeCapture(pages: BatchPage[], page: BatchPage, replaceId?: st
 }
 export function cameraError(error: unknown): string {
   if (error instanceof DOMException) {
-    if (error.name === 'NotAllowedError' || error.name === 'SecurityError') return 'Camera access was not allowed. Enable camera access in your browser, then try again. You can also use Scan with Camera or Choose files.';
-    if (error.name === 'NotFoundError') return 'No camera was found. Use Scan with Camera or Choose files instead.';
+    if (error.name === 'NotAllowedError' || error.name === 'SecurityError') return 'Camera access was not allowed. Enable camera access in your browser, then try again. You can also use Camera Scan or Choose files.';
+    if (error.name === 'NotFoundError') return 'No camera was found. Use Camera Scan or Choose files instead.';
     if (error.name === 'NotReadableError') return 'The camera could not be opened. Close other apps using it, then try again.';
-    if (error.name === 'OverconstrainedError') return 'This camera cannot provide the requested image. Try Scan with Camera or Choose files.';
+    if (error.name === 'OverconstrainedError') return 'This camera cannot provide the requested image. Try Camera Scan or Choose files.';
   }
   return error instanceof Error ? error.message : 'The scan could not be captured. Please try again.';
 }
@@ -35,7 +35,7 @@ export async function photograph(video: HTMLVideoElement, track: MediaStreamTrac
     const scale = Math.min(1, 5000 / Math.max(video.videoWidth, video.videoHeight), Math.sqrt(16_000_000 / (video.videoWidth * video.videoHeight)));
     canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale);
     const context = canvas.getContext('2d');
-    if (!context) throw new Error('Could not capture this camera image. Try Scan with Camera instead.');
+    if (!context) throw new Error('Could not capture this camera image. Try Camera Scan instead.');
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     return await canvasBlob(canvas);
   } finally { canvas.width = canvas.height = 0; }

@@ -40,7 +40,7 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
         <li>
           <strong className="text-white">Load your scans.</strong> Choose PDF,
           PNG or JPEG files, or use a sample. Scan at 600 DPI where possible.
-          For a phone photo, choose Scan with Camera, keep the full sheet visible,
+          For a phone photo, choose Camera Scan, keep the full sheet visible,
           check the corrected preview and adjust corners or rotation before confirming.
           For a stack, use Batch Scan to capture sheets consecutively, then Finish
           Scanning to review and confirm the batch before calibration. Auto Scan captures
