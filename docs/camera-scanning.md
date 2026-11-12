@@ -1,5 +1,7 @@
 # Phone camera scanning
 
+Current release: **v2.3 Birdseye**. Versioned sections below record when features were introduced.
+
 Camera capture is an additional, browser-only input path. PDF and scanned-image upload, calibration, answer recognition, scoring, review, export and branding retain their existing implementations.
 
 ## Integration
@@ -70,7 +72,7 @@ Batch files:
 - `src/utils/camera/scanner.ts`, `client.ts`, `camera.worker.ts`: batch command reusing the single-page correction implementation.
 - `src/components/UploadAndInputStep.tsx`, `HelpModal.tsx`: entry, atomic normal-loader handoff and guide instructions.
 - `src/utils/release.ts`, `index.html`, `package.json`, `ReadMe.md`: version 2.2 / 2.2.0; `metadata.json`: camera embedding permission.
-- `tests/batchCamera.browser.mjs`: live simulated camera stream with real OpenCV correction, 30 captures, failure/retake/order/review/transfer/permission/cancellation checks. `tests/cameraScanning.browser.mjs` also exercises batch correction against the equivalent flatbed results; single-page UI tests remain in place. `tests/interface.browser.mjs` expects v2.2.
+- `tests/batchCamera.browser.mjs`: live simulated camera stream with real OpenCV correction, 30 captures, failure/retake/order/review/transfer/permission/cancellation checks. `tests/cameraScanning.browser.mjs` also exercises batch correction against the equivalent flatbed results; single-page UI tests remain in place. `tests/interface.browser.mjs` checks the current release label.
 
 `npm run test:batch-camera` builds the app and runs a 30-sheet simulated-live-camera test at a phone touch viewport. The source canvas presents a different sheet marker for every capture. The test checks one continuous acquisition stream and one worker, full correction per page, capture order, failed captures/retakes, successful in-place replacement, deletion, add-more, stream/worker release and transfer to the normal collection without an answer key. `BATCH_TEST_COUNT=3` gives a shorter smoke test; `BATCH_TEST_DEV=1` uses the development server. Automated camera and stream tests do not replace physical Android/iOS testing: verify actual camera permissions, resolution negotiated by each phone, ImageCapture support/orientation, a full class-sized session, heat/memory limits and iframe camera policy on the deployed host. Desktop simulated 30-page stability does not establish that every phone will have sufficient memory.
 
