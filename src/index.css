@@ -97,3 +97,10 @@ html { scrollbar-gutter: stable; }
 .selection-demo { animation: selectionHint 1.5s linear infinite; }
 
 @media (prefers-reduced-motion: reduce) { .selection-demo { animation: none !important; } }
+
+/* The mobile illustration never captures gestures; reduced motion keeps its outline still. */
+.guide-static { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mobile-selection-guide .guide-motion { display: none; }
+  .mobile-selection-guide .guide-static { display: block; }
+}

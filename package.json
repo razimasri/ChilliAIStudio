@@ -30,7 +30,8 @@
     "test:camera-interface": "node tests/cameraInterface.browser.mjs",
     "test:batch-camera": "node tests/batchCamera.browser.mjs",
     "test:auto-gate": "node tests/autoCapture.mjs",
-    "test:auto-camera": "node tests/autoCamera.browser.mjs"
+    "test:auto-camera": "node tests/autoCamera.browser.mjs",
+    "test:mobile-selection": "node tests/mobileSelection.browser.mjs"
   },
   "dependencies": {
     "@techstark/opencv-js": "^5.0.0-release.1",

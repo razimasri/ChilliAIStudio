@@ -308,9 +308,7 @@ try {
   await page.getByRole('button', { name: 'Continue to calibration' }).click();
   const area = page.getByLabel('Question area selection', { exact: true });
   await area.waitFor({ timeout: 120000 });
-  await page
-    .getByText('Drag to frame the answer grid', { exact: true })
-    .waitFor();
+  await page.locator('.mobile-selection-guide').waitFor();
   assert.equal(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

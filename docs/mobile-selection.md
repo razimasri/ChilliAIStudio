@@ -1,0 +1,9 @@
+# Mobile question-area selection
+
+The mobile question-area screen now prioritizes the scanned page. Its header is one compact row with a step count; the full step tabs remain on desktop and in the mobile empty-box step. Repeated mobile instruction paragraphs are visually hidden while the canvas retains its accessible description. Background preparation uses a small, non-interactive "Loading detail…" badge instead of a multi-line paragraph. Draw/Pan and zoom controls keep 44-pixel touch targets. The question-area footer is one row with Next and, after drawing, Clear selection.
+
+The instruction card is replaced by `SelectionGuide`: a translucent SVG grid of squares with an animated bounding rectangle and moving drag point. There is no panel, caption, dismiss button or interactive target. The overlay is attached to the page and passes touches through. It disappears on the first drawing touch, stays hidden after a selection, and returns after Clear when Draw is active. Reduced-motion mode shows the grid with a static bounding outline.
+
+The existing desktop page-left/control-right layout, original desktop guidance, native coordinate mapping, loading and calibration algorithms remain in place. No image resolution, answer recognition or marking behavior changes, and no dependencies were added.
+
+Validation: `test:mobile-selection` checks 390×844, 360×740 and 320×640 portrait viewports, with the workspace occupying at least 60% of the viewport, the rendered sheet at least 80% of its width, Next reachable, and no horizontal overflow. It checks bounding-box growth, a touch through the illustration committing a real selection, first-touch hiding, Clear reset and reduced motion. Existing interface, desktop layout and native calibration-preview/gesture-transfer tests pass. TypeScript and production build pass. Physical-phone usability should still be checked on the deployed app.
