@@ -22,7 +22,7 @@ export const Header: React.FC<HeaderProps> = ({ currentStep, onShowHelp }) => {
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8c1529] to-[#571622] flex items-center justify-center shadow-lg shadow-[#8c1529]/20 border border-[#b1a1a4]/20">
             <img
-              src="/icons/Icon128.png"
+              src="/icons/printmark.png"
               alt="ChilliMark logo"
               className="w-10 h-10 rounded-lg bg-white p-1 object-contain"
             />
