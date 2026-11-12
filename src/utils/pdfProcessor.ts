@@ -316,13 +316,3 @@ export function releaseUnusedSources(
     if (source) void source.then((pdf) => pdf.destroy()).catch(() => {});
   }
 }
-
-/** Existing image helper, with the source retained for deferred decoding. */
-export async function loadImageFromUrl(
-  url: string,
-  name: string,
-): Promise<ExamFile> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Could not load ${name}`);
-  return (await loadExamFile(new File([await response.blob()], name)))[0];
-}

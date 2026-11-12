@@ -5,7 +5,7 @@ import { rotation } from './src/utils/omrEngine.ts';
 
 async function checkThresh() {
   const cv = await getCV();
-  const data = new Uint8Array(fs.readFileSync('public/assets/aistudio/IBSample_719b8592.pdf'));
+  const data = new Uint8Array(fs.readFileSync('public/samples/IBSample.pdf'));
   const doc = await getDocument({ data }).promise;
 
   const page3 = await doc.getPage(3);

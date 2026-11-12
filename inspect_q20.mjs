@@ -5,7 +5,7 @@ import { rotation } from './src/utils/omrEngine.ts';
 
 async function inspectQ20() {
   const cv = await getCV();
-  const data = new Uint8Array(fs.readFileSync('public/assets/aistudio/IBSample_719b8592.pdf'));
+  const data = new Uint8Array(fs.readFileSync('public/samples/IBSample.pdf'));
   const doc = await getDocument({ data }).promise;
 
   // Page 3 is Foster Holmes

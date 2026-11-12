@@ -133,18 +133,13 @@ export class CalibrationClient {
     this.cached = true;
     return result;
   }
-  /** Used by standalone callers that already own an aligned PNG. */
-  useAlignedImage(input: Blob) {
-    this.alignedInput = input;
-    this.cached = false;
-  }
   dispose() {
     this.closed = true;
     this.stop(new DOMException('Cancelled', 'AbortError'));
     this.alignedInput = undefined;
   }
 }
-// Disposable compatibility helpers; the UI uses one shared session instead.
+// Disposable preparation helper used by native calibration regression tests.
 export async function prepareCalibration(
   input: Blob,
   signal: AbortSignal,
@@ -153,20 +148,6 @@ export async function prepareCalibration(
   const client = new CalibrationClient();
   try {
     return await client.prepare(input, signal, progress);
-  } finally {
-    client.dispose();
-  }
-}
-export async function measureCalibration(
-  input: Blob,
-  params: CalibrationParams,
-  area: Area,
-  signal: AbortSignal,
-) {
-  const client = new CalibrationClient();
-  client.useAlignedImage(input);
-  try {
-    return await client.measure(params, area, signal);
   } finally {
     client.dispose();
   }
