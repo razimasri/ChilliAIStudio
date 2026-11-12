@@ -2,7 +2,7 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import fs from 'fs';
 
 async function checkPdf() {
-  const data = new Uint8Array(fs.readFileSync('public/assets/aistudio/IBSample_719b8592.pdf'));
+  const data = new Uint8Array(fs.readFileSync('public/samples/IBSample.pdf'));
   const doc = await getDocument({ data }).promise;
   console.log('Pages:', doc.numPages);
   const p1 = await doc.getPage(1);

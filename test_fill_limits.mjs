@@ -14,7 +14,7 @@ import {
 
 async function testFillLimits() {
   const cv = await getCV();
-  const data = new Uint8Array(fs.readFileSync('public/assets/aistudio/IBSample_719b8592.pdf'));
+  const data = new Uint8Array(fs.readFileSync('public/samples/IBSample.pdf'));
   const doc = await getDocument({ data }).promise;
 
   async function getMat(pageNum) {

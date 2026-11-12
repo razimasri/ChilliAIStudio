@@ -6,3 +6,8 @@ ChilliMark.onefile-build
 .env
 output
 
+# Browser build, dependencies and local test artifacts
+node_modules/
+dist/
+work/
+*.tsbuildinfo

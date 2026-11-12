@@ -18,7 +18,7 @@ async function verifyBoth() {
 
   // 1. VERIFY CAMBRIDGE IGSample.pdf
   console.log('=== VERIFYING CAMBRIDGE (IGSample.pdf) ===');
-  const camData = new Uint8Array(fs.readFileSync('public/assets/aistudio/IGSample_bab86a83.pdf'));
+  const camData = new Uint8Array(fs.readFileSync('public/samples/IGSample.pdf'));
   const camDoc = await getDocument({ data: camData }).promise;
   console.log(`Loaded IGSample with ${camDoc.numPages} pages.`);
 

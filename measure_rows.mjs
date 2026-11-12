@@ -5,7 +5,7 @@ import { rotation, scale } from './src/utils/omrEngine.ts';
 
 async function measureAllBoxes() {
   const cv = await getCV();
-  const data = new Uint8Array(fs.readFileSync('public/assets/aistudio/IBSample_719b8592.pdf'));
+  const data = new Uint8Array(fs.readFileSync('public/samples/IBSample.pdf'));
   const doc = await getDocument({ data }).promise;
 
   // Let's inspect page 3 (Foster Holmes) where user saw Q20 ambiguous
