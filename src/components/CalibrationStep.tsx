@@ -1,3 +1,4 @@
+import { SelectionGuide } from './SelectionGuide';
 import { CalibrationClient } from '../utils/calibrationClient';
 import {
   alignQuestionArea,
@@ -649,6 +650,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         className="order-3 lg:order-1 flex-1 min-h-0 min-w-0 overflow-auto overscroll-contain relative lg:rounded-2xl lg:border lg:border-[#571622]"
         aria-busy={isSnapping}
       >
+        {isInitializingTemplate && previewUrl && !templateError && <div role="status" className="absolute top-2 right-2 z-20 pointer-events-none rounded bg-[#240c10]/70 px-2 py-1 text-xs text-[#d8c7ca] lg:hidden">Loading detail…</div>}
         {(!previewUrl && !templateError) ||
         (step === 'sampleBox' && !qAreaImage && !templateError) ? (
           <div role="status" className="p-8 text-center">
@@ -668,36 +670,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
             scan orientation and resolution.
           </div>
         ) : (
-          <div className="min-h-full min-w-full w-max p-4 flex">
-            {step === 'qArea' &&
-              params.x2 <= params.x1 &&
-              !isDrawingQ &&
-              tool === 'draw' && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 lg:hidden">
-                  <div className="bg-[#240c10]/95 border border-[#8c1529] rounded-xl p-4 text-center shadow-xl">
-                    <svg
-                      viewBox="0 0 100 60"
-                      className="w-28 h-16 mx-auto"
-                      aria-hidden="true"
-                    >
-                      <rect
-                        x="8"
-                        y="8"
-                        width="84"
-                        height="44"
-                        rx="4"
-                        fill="none"
-                        stroke="#f3b0ba"
-                        strokeWidth="3"
-                        strokeDasharray="12 5"
-                        className="selection-demo"
-                      />
-                      <circle cx="92" cy="52" r="5" fill="#f3b0ba" />
-                    </svg>
-                    <p className="text-sm">Drag to frame the answer grid</p>
-                  </div>
-                </div>
-              )}
+          <div className="min-h-full min-w-full w-max p-2 lg:p-4 flex">
             <div
               className="relative shrink-0 m-auto shadow-xl"
               style={{
@@ -742,6 +715,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                   }}
                 />
               )}
+              {step === 'qArea' && params.x2 <= params.x1 && !isDrawingQ && tool === 'draw' && <SelectionGuide />}
               {step === 'sampleBox' && isSnapping && sampleSelection && (
                 <div
                   role="status"
@@ -772,18 +746,20 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         className="contents lg:flex lg:order-2 lg:w-[22rem] xl:w-[24rem] lg:shrink-0 lg:min-h-0 lg:flex-col lg:overflow-hidden lg:rounded-2xl lg:border lg:border-[#571622] lg:bg-[#240c10]"
       >
         <div className="contents lg:block lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
-          <div className="order-1 shrink-0 border-b border-[#571622] bg-[#240c10] px-4 py-2 flex flex-wrap items-center justify-between gap-2 lg:flex-col lg:items-stretch lg:p-4 lg:gap-2">
+          <div className="order-1 shrink-0 border-b border-[#571622] bg-[#240c10] px-2 py-1 flex flex-wrap items-center justify-between gap-1 lg:flex-col lg:items-stretch lg:p-4 lg:gap-2">
             <button
               onClick={onBack}
+              aria-label="Back to setup"
               className="min-h-11 px-2 rounded-lg hover:bg-[#571622]"
             >
-              ← Back to setup
+              <span className="lg:hidden">← Setup</span><span className="hidden lg:inline">← Back to setup</span>
             </button>
             <h2 className="font-bold text-base lg:text-xl">
               {step === 'qArea'
                 ? 'Select question area'
                 : 'Select one empty box'}
             </h2>
+            <span className="lg:hidden text-xs text-[#b1a1a4]" aria-label={`Calibration step ${step === 'qArea' ? 1 : 2} of 2`}>{step === 'qArea' ? '1 / 2' : '2 / 2'}</span>
             <p
               className="hidden lg:block text-sm text-[#b1a1a4] truncate"
               title={firstFile.name}
@@ -792,7 +768,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
             </p>
             <nav
               aria-label="Calibration steps"
-              className="flex gap-2 w-full sm:w-auto lg:w-full"
+              className={`${step === 'qArea' ? 'hidden lg:flex' : 'flex'} gap-2 w-full sm:w-auto lg:w-full`}
             >
               <button
                 aria-current={step === 'qArea' ? 'step' : undefined}
@@ -813,10 +789,10 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
               </button>
             </nav>
           </div>
-          <div className="order-2 shrink-0 px-4 py-2 bg-[#240c10] border-b border-[#571622] space-y-2 lg:p-4 lg:space-y-3 lg:border-b-0">
+          <div className="order-2 shrink-0 px-2 py-1 bg-[#240c10] border-b border-[#571622] lg:space-y-3 lg:p-4 lg:border-b-0">
             <p
               id="canvas-help"
-              className={`text-sm text-[#d8c7ca] relative ${step === 'qArea' && params.x2 <= params.x1 && tool === 'draw' ? 'lg:pl-16' : ''}`}
+              className={`sr-only lg:not-sr-only text-sm text-[#d8c7ca] lg:relative ${step === 'qArea' && params.x2 <= params.x1 && tool === 'draw' ? 'lg:pl-16' : ''}`}
             >
               {step === 'qArea' &&
                 params.x2 <= params.x1 &&
@@ -849,21 +825,17 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
               <p
                 id="calibration-preparation"
                 role="status"
-                className="text-sm text-[#b1a1a4]"
+                className="hidden lg:block text-sm text-[#b1a1a4]"
               >
                 <span
                   className="inline-block w-3 h-3 mr-2 border-2 border-[#571622] border-t-[#f3b0ba] rounded-full animate-spin"
                   aria-hidden="true"
                 />
                 {preparation}{' '}
-                {isSnapping
-                  ? 'Your selection is saved.'
-                  : step === 'qArea'
-                    ? 'You can select the grid now.'
-                    : 'You can select an empty box now.'}
+                {isSnapping ? 'Your selection is saved.' : step === 'qArea' ? 'You can select the grid now.' : 'You can select an empty box now.'}
               </p>
             )}
-            <div className="flex flex-wrap items-center justify-between gap-2 lg:flex-col lg:items-stretch lg:gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-1 lg:flex-col lg:items-stretch lg:gap-2">
               <div
                 className="flex items-center gap-1"
                 role="group"
@@ -872,14 +844,14 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                 <button
                   aria-pressed={tool === 'draw'}
                   onClick={() => setTool('draw')}
-                  className={`min-h-11 px-3 rounded-lg ${tool === 'draw' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
+                  className={`min-h-11 px-2 lg:px-3 rounded-lg ${tool === 'draw' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
                 >
                   Draw
                 </button>
                 <button
                   aria-pressed={tool === 'pan'}
                   onClick={() => setTool('pan')}
-                  className={`min-h-11 px-3 rounded-lg ${tool === 'pan' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
+                  className={`min-h-11 px-2 lg:px-3 rounded-lg ${tool === 'pan' ? 'bg-[#8c1529]' : 'bg-[#18090b]'}`}
                 >
                   Pan
                 </button>
@@ -897,7 +869,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                 >
                   −
                 </button>
-                <span className="min-w-12 text-sm text-center">
+                <span className="min-w-8 lg:min-w-12 text-sm text-center">
                   {Math.round(fit * zoom * 100)}%
                 </span>
                 <button
@@ -910,14 +882,14 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                 </button>
                 <button
                   onClick={() => setZoom(1)}
-                  className="min-h-11 px-3 rounded-lg bg-[#18090b]"
+                  className="min-h-11 px-2 lg:px-3 rounded-lg bg-[#18090b]"
                 >
                   Fit
                 </button>
                 {step === 'sampleBox' && (
                   <button
                     onClick={() => changeStep('sampleBox')}
-                    className="min-h-11 px-3 rounded-lg bg-[#18090b]"
+                    className="min-h-11 px-2 lg:px-3 rounded-lg bg-[#18090b]"
                   >
                     Box view
                   </button>
@@ -926,14 +898,14 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
             </div>
           </div>
         </div>
-        <div className="order-4 shrink-0 border-t border-[#571622] bg-[#240c10] px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex flex-wrap items-center justify-between gap-2 lg:block lg:space-y-3 lg:p-4">
+        <div className={`order-4 shrink-0 border-t border-[#571622] bg-[#240c10] px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex ${step === 'qArea' ? 'flex-nowrap' : 'flex-wrap'} items-center justify-between gap-2 lg:block lg:space-y-3 lg:p-4`}>
           <div
             role="status"
             className="text-sm min-w-0 lg:flex lg:items-center lg:gap-3"
           >
             {step === 'qArea' ? (
               <>
-                <p>
+                <p className="sr-only lg:not-sr-only">
                   {params.x2 > params.x1
                     ? 'Area selected. Review, then continue.'
                     : 'Draw around the grid. Use Pan to move a zoomed page.'}
@@ -964,7 +936,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
               disabled={
                 !previewUrl || !!templateError || params.x2 <= params.x1
               }
-              className="min-h-12 w-full sm:w-auto lg:w-full px-5 bg-[#8c1529] rounded-xl font-semibold disabled:opacity-40"
+              className="min-h-12 flex-1 lg:w-full px-5 bg-[#8c1529] rounded-xl font-semibold disabled:opacity-40"
             >
               Next: Select Box
             </button>
