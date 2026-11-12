@@ -1,6 +1,0 @@
-{
-  "summary": "Updated implementation plan to contain the literal verbatim Python code from https://github.com/razimasri/ChilliMark/blob/main/ChilliMark.py for all 13 pipeline functions alongside their TypeScript transcoding rules.",
-  "updatedAt": "2026-11-04T02:01:24.178624796Z",
-  "requestFeedback": true,
-  "userFacing": true
-}

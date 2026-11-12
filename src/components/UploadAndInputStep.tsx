@@ -412,10 +412,14 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            className={`rounded-2xl border-2 border-dashed ${isDragging ? 'border-[#f3b0ba]' : 'border-[#571622]'} bg-[#240c10] ${files.length ? 'p-4 flex flex-wrap items-center justify-between gap-3' : 'p-8 min-h-64 flex flex-col items-center justify-center text-center gap-4'}`}
+            className={`rounded-2xl border-2 border-dashed ${isDragging ? 'border-[#f3b0ba]' : 'border-[#571622]'} bg-[#240c10] ${
+              files.length
+                ? 'p-5 flex flex-col md:flex-row md:items-center justify-between gap-4'
+                : 'p-8 min-h-64 flex flex-col items-center justify-center text-center gap-5'
+            }`}
           >
             {!files.length && <Upload className="w-12 h-12 text-[#f3b0ba]" />}
-            <div>
+            <div className={files.length ? 'space-y-1' : ''}>
               <h2 className="font-bold">
                 {files.some((page) => page.isSample)
                   ? 'Load your own exam'
@@ -431,25 +435,47 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
                     : 'Select files or drop them here. Scan at 600 DPI where possible.'}
               </p>
             </div>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isLoadingFile}
-              className="min-h-11 px-4 rounded-xl bg-[#8c1529] font-semibold"
-            >
-              {files.some((page) => page.isSample)
-                ? 'Choose my exam'
-                : files.length
-                  ? 'Add files'
-                  : 'Choose files'}
-            </button>
-            <div className="flex flex-col items-start gap-1">
-              <button onClick={() => cameraInputRef.current?.click()} disabled={isLoadingFile}
-                className="min-h-11 px-4 rounded-xl border border-[#8c1529] font-semibold flex items-center gap-2"><Camera size={20} />Scan with Camera</button>
-              <button onClick={() => { setAutoStart(false); setBatchScanning(true); }} disabled={isLoadingFile}
-                className="min-h-11 px-4 rounded-xl bg-[#571622] font-semibold flex items-center gap-2"><Camera size={20} />Batch Scan</button>
-              <button onClick={() => { setAutoStart(true); setBatchScanning(true); }} disabled={isLoadingFile}
-                className="min-h-11 px-4 rounded-xl bg-[#8c1529] font-semibold flex items-center gap-2"><Camera size={20} />Auto Scan</button>
-              <p className="text-xs text-[#b1a1a4] max-w-xs">Use the rear camera or choose a photo. If camera access is unavailable, use Choose files. Keep the full page visible on a contrasting surface.</p>
+            <div className={`flex flex-col ${files.length ? 'items-start md:items-end' : 'items-center'} gap-3 max-w-xl`}>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoadingFile}
+                className="min-h-11 px-5 rounded-xl bg-[#8c1529] hover:bg-[#a61931] font-semibold transition-colors"
+              >
+                {files.some((page) => page.isSample)
+                  ? 'Choose my exam'
+                  : files.length
+                    ? 'Add files'
+                    : 'Choose files'}
+              </button>
+              <div className={`flex flex-wrap items-center ${files.length ? 'justify-start md:justify-end' : 'justify-center'} gap-2.5`}>
+                <button
+                  onClick={() => cameraInputRef.current?.click()}
+                  disabled={isLoadingFile}
+                  className="min-h-11 px-4 rounded-xl border border-[#8c1529] hover:bg-[#8c1529]/20 font-semibold flex items-center gap-2 transition-colors"
+                >
+                  <Camera size={20} />
+                  Scan with Camera
+                </button>
+                <button
+                  onClick={() => { setAutoStart(false); setBatchScanning(true); }}
+                  disabled={isLoadingFile}
+                  className="min-h-11 px-4 rounded-xl bg-[#571622] hover:bg-[#6e1c2b] border border-[#7a2030] font-semibold flex items-center gap-2 transition-colors"
+                >
+                  <Camera size={20} />
+                  Batch Scan
+                </button>
+                <button
+                  onClick={() => { setAutoStart(true); setBatchScanning(true); }}
+                  disabled={isLoadingFile}
+                  className="min-h-11 px-4 rounded-xl bg-[#8c1529] hover:bg-[#a61931] font-semibold flex items-center gap-2 transition-colors"
+                >
+                  <Camera size={20} />
+                  Auto Scan
+                </button>
+              </div>
+              <p className={`text-xs text-[#b1a1a4] ${files.length ? 'text-left md:text-right max-w-sm' : 'text-center max-w-md'}`}>
+                Use the rear camera or choose a photo. If camera access is unavailable, use Choose files. Keep the full page visible on a contrasting surface.
+              </p>
             </div>
           </div>
           {files.length > 0 && (
