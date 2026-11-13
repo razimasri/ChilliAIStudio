@@ -337,9 +337,9 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
           <div className="flex flex-wrap items-center gap-3">
             <span className="rounded-lg bg-white p-2">
               <img
-                src="/icons/Banner.png"
+                src="/icons/printmark.png"
                 alt="ChilliMark"
-                className={files.length ? 'w-36 h-auto' : 'w-48 h-auto'}
+                className={files.length ? 'w-10 h-10 object-contain' : 'w-12 h-12 object-contain'}
               />
             </span>
             <span className="text-sm text-[#f3b0ba]">

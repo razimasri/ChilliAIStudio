@@ -988,16 +988,18 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                                     width: `${q.percentages[option] || 0}%`,
                                     backgroundColor:
                                       q.correctAnswer === option
-                                        ? '#10b981'
-                                        : [
-                                            '#2563eb',
-                                            '#4f46e5',
-                                            '#9333ea',
-                                            '#d97706',
-                                            '#db2777',
-                                            '#6b7280',
-                                            '#fbbf24',
-                                          ][index % 7],
+                                        ? '#2f855a'
+                                        : option === 'Blank'
+                                          ? '#4b3b3e'
+                                          : option === 'Unclear'
+                                            ? '#7d6442'
+                                            : [
+                                                '#a63446',
+                                                '#3f6387',
+                                                '#b5852e',
+                                                '#b85636',
+                                                '#784b68',
+                                              ][index % 5],
                                   }}
                                 />
                               ),

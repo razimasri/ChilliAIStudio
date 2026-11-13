@@ -6,7 +6,7 @@ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH,ar
 try {
   const page=await browser.newPage({viewport:{width:1440,height:1000}});
   await page.goto(server.resolvedUrls.local[0]);
-  for (const src of ['/icons/printmark.png','/icons/Banner.png']) {
+  for (const src of ['/icons/printmark.png']) {
     await page.waitForFunction(src=>[...document.images].some(img=>img.getAttribute('src')===src&&img.complete&&img.naturalWidth>0),src);
   }
   assert.equal(await page.locator('link[rel="icon"]').getAttribute('href'),'/icons/Icon16.png');
