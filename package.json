@@ -1,7 +1,7 @@
 {
   "name": "chillimark",
   "private": true,
-  "version": "2.3.0",
+  "version": "2.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
@@ -36,7 +36,10 @@
     "test:alignment-performance": "node tests/alignmentPerformance.browser.mjs",
     "test:cv-runtime": "node tests/cvRuntime.browser.mjs",
     "test:marking-speed": "node tests/markingSpeed.browser.mjs",
-    "test:annotation-finalization": "node tests/finalizeAnnotations.browser.mjs"
+    "test:annotation-finalization": "node tests/finalizeAnnotations.browser.mjs",
+    "test:page-lookahead": "node tests/pageLookahead.browser.mjs",
+    "test:prepared-downloads": "node tests/preparedDownloads.browser.mjs",
+    "test:pdf-pipeline-speed": "node tests/pdfPipelineSpeed.browser.mjs"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",

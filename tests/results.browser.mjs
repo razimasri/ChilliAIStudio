@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
@@ -13,9 +13,20 @@ const parse=data=>{
 };
 try {
   const page=await browser.newPage({viewport:{width:1440,height:1100}});
+  await page.addInitScript(()=>{
+    const Native=Worker,counts={pdf:0,zip:0,live:0,peak:0};window.exportWorkers=counts;
+    window.Worker=class extends Native{
+      constructor(...args){super(...args);const path=String(args[0]);this.tag=path.includes('/src/utils/pdf.worker.ts')?'pdf':path.includes('/src/utils/archive.worker.ts')?'zip':undefined;
+        if(this.tag){counts[this.tag]++;counts.live++;counts.peak=Math.max(counts.peak,counts.live);}}
+      terminate(){if(this.tag&&!this.closed){this.closed=true;counts.live--;}super.terminate();}
+    };
+  });
   await page.goto(server.resolvedUrls.local[0]+'tests/fixtures/results.html');
+  await page.getByRole('status').filter({hasText:'Downloads ready'}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.exportWorkers),{pdf:1,zip:1,live:0,peak:1},'Results prebuilds both exports sequentially, including under Strict Mode');
   await page.getByRole('heading',{name:'Class Overview & Question Analysis'}).waitFor();
   await page.getByRole('heading',{name:'Score Distribution'}).waitFor();
+  assert.equal(await page.getByText(/Pass Rate|of \d+ passed/).count(),0,'No inferred pass threshold');
   assert.equal(await page.getByRole('button',{name:'Print sheet',exact:true}).count(),0);
   assert.equal(await page.getByRole('button',{name:'Download Sheet (PNG)',exact:true}).count(),0);
   const lowest=page.locator('div.rounded-2xl').filter({has:page.locator('span',{hasText:'Lowest Score'})}).last();
@@ -35,7 +46,9 @@ try {
   assert.equal(value(5,'Unclear %'),'67');
   const pdfBytes=await download('Download Annotated PDF');
   const pdf=await PDFDocument.load(pdfBytes);
-  assert.equal(pdf.getPageCount(),6,'Three annotated sheets, summary, question analysis and comparison');
+  assert.equal(pdf.getCreator(),'ChilliMark Birdseye 2.4');
+  await writeFile('/tmp/chilli-restyled-report.pdf',pdfBytes);
+  assert.equal(pdf.getPageCount(),7,'Three sheets, summary, two option panels and comparison');
   const pdfText=await page.evaluate(async bytes=>{
     const pdfjs=await import('/node_modules/pdfjs-dist/build/pdf.mjs');
     pdfjs.GlobalWorkerOptions.workerSrc='/node_modules/pdfjs-dist/build/pdf.worker.mjs';
@@ -45,15 +58,23 @@ try {
     await doc.destroy(); return texts;
   },Array.from(pdfBytes));
   assert.match(pdfText[0],/Mean score: 1.7/);
+  assert.doesNotMatch(pdfText.join(' '),/At least 50|Pass Rate|passed/i);
   assert.match(pdfText[0],/Zoë/);
-  assert.match(pdfText[1],/Unclear: 2 \(67%\)/);
-  assert.match(pdfText[2],/S3/);
+  assert.match(pdfText[2],/UNCLEAR/);
+  assert.match(pdfText[2],/5 B 0\/3 \(0%\) 0 2 \(67%\)/);
+  assert.match(pdfText[pdfText.length-1],/S3/);
   const zip=await JSZip.loadAsync(await download('Download All Student Work (ZIP) 3'));
   const reportFile=Object.keys(zip.files).find(p=>p.endsWith('Class_Scores_Summary.csv'));
   assert.equal(await zip.file(reportFile).async('string'),reportText);
   assert.ok(Object.keys(zip.files).some(p=>p.endsWith('Question_Statistics.csv')));
   const pdfFile=Object.keys(zip.files).find(p=>p.endsWith('.pdf'));
   assert.deepEqual(await zip.file(pdfFile).async('nodebuffer'),pdfBytes,'Download All reuses the complete annotated report');
+  assert.deepEqual(await page.evaluate(()=>window.exportWorkers),{pdf:1,zip:1,live:0,peak:1},'Download buttons reuse prepared files without starting workers');
+  await page.getByRole('tab',{name:'Student Scores Roster',exact:true}).click();
+  assert.equal(await page.getByRole('columnheader',{name:'Verdict',exact:true}).count(),0);
+  assert.equal(await page.getByText('Pass',{exact:true}).count(),0);
+  assert.equal(await page.getByText('Review Needed',{exact:true}).count(),0);
+  await page.getByRole('tab',{name:/Overall Statistics/}).click();
   const batch=await page.evaluate(async()=>{
     const {exportAnnotatedPdf}=await import('/src/utils/exportPdf.ts');
     const {calculateQuestionStats}=await import('/src/utils/omrEngine.ts');
@@ -78,7 +99,7 @@ try {
     return {pages,last,overflow,cancelled,failed};
   });
   assert.ok(batch.pages>38,'Thirty sheets plus paginated report and comparison panels');
-  assert.match(batch.last,/40 \/ A/);assert.match(batch.last,/S30/);
+  assert.match(batch.last,/40\s+A/);assert.match(batch.last,/S30/);
   assert.equal(batch.overflow,false,'Long names and 40-question panels stay inside printable margins');
   assert.equal(batch.cancelled,true);assert.equal(batch.failed,true);
   await page.screenshot({path:'/workspace/work/results-overview.png',fullPage:true});

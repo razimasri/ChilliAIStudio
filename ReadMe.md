@@ -1,5 +1,11 @@
 ![ChilliMark Logo](/icons/Banner.png)
-# ChilliMark — v2.3 Birdseye
+# ChilliMark — v2.4 Birdseye
+
+The v2.4 web release includes SIMD marking, bounded PDF preparation, background
+PDF/ZIP generation and printable class reports. See
+[PDF preparation and reports](docs/pdf-preparation-and-reports.md) for behaviour
+and validation, and [Version 3: Cayenne](docs/cayenne-roadmap.md) for planned
+teacher quality-of-life work.
 
 
 ChilliMark Heuristical Identification of Landmark-Less Input Multiple-choice Answer Recognition Kernel

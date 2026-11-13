@@ -12,14 +12,12 @@ import {
   Coffee,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   Printer,
   FolderDown,
   Loader2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { exportAnnotatedPdf } from '../utils/exportPdf';
-import { exportArchive, ArchiveEntry } from '../utils/exportArchive';
+import { PreparedDownloads } from '../utils/preparedDownloads';
 import { StudentResult, QuestionStat } from '../types';
 import {
   exportStudentScoresCsv,
@@ -55,12 +53,19 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   }, [activeTab]);
   useEffect(() => setSheetZoom(1), [selectedStudentIdx]);
   const [isPdf, setIsPdf] = useState(false);
-  const pdfCache = useRef<{students: StudentResult[]; stats: QuestionStat[]; key: Record<number,string>; blob: Blob}>();
+  const downloadsRef = useRef<{students:StudentResult[]; stats:QuestionStat[]; key:Record<number,string>; job:PreparedDownloads}>();
+  const getDownloads = () => {
+    const cached=downloadsRef.current;
+    if(cached && cached.students===students && cached.stats===stats && cached.key===answerKey && !cached.job.controller.signal.aborted) return cached.job;
+    cached?.job.dispose();
+    const job=new PreparedDownloads(students,stats,answerKey);
+    downloadsRef.current={students,stats,key:answerKey,job};
+    return job;
+  };
+  const [downloadStatus,setDownloadStatus] = useState('Preparing downloads in background…');
   const [isZipping, setIsZipping] = useState(false);
   const [zipProgress, setZipProgress] = useState(0);
   const [zipError, setZipError] = useState<string | null>(null);
-  const zipController = useRef<AbortController>();
-  useEffect(() => () => zipController.current?.abort(), []);
 
   // Fire celebratory confetti on initial load
   useEffect(() => {
@@ -112,10 +117,6 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   const lowestScore = students.length
     ? Math.min(...students.map((s) => s.score))
     : 0;
-  const passCount = students.filter((s) => s.percentage >= 50).length;
-  const passRate =
-    totalStudents > 0 ? Math.round((passCount / totalStudents) * 100) : 0;
-
   // CSV download handlers
   const handleDownloadScoresCsv = () => {
     const csvContent = exportStudentScoresCsv(students, answerKey);
@@ -155,22 +156,32 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
     document.body.removeChild(link);
   };
 
-  const getPdf = async (controller: AbortController) => {
-    if (pdfCache.current?.students === students && pdfCache.current.key === answerKey && pdfCache.current.stats === stats)
-      return pdfCache.current.blob;
-    const blob = await exportAnnotatedPdf({
-      students: students.map(({name, score, total, percentage, responses, annotatedDataUrl}) =>
-        ({name, score, total, percentage, responses, annotatedDataUrl})), stats, answerKey,
-    }, percent => setZipProgress(Math.round(percent)), controller.signal);
-    pdfCache.current = {students, stats, key: answerKey, blob};
-    return blob;
-  };
+  useEffect(() => {
+    const downloads=getDownloads();
+    setIsPdf(false);setIsZipping(false);setZipError(null);setZipProgress(0);
+    setDownloadStatus(students.length?'Preparing downloads in background…':'No student work to download');
+    downloads.onProgress = (stage,percent) => {
+      setZipProgress(Math.round(percent));
+      setDownloadStatus(percent>=100 && stage==='pdf' ? 'PDF ready' : `Preparing ${stage==='pdf'?'PDF':'Download All'} in background… ${Math.round(percent)}%`);
+    };
+    const timer = setTimeout(() => {
+      if(!students.length || downloads.controller.signal.aborted)return;
+      void downloads.all().then(() => {if(!downloads.controller.signal.aborted)setDownloadStatus('Downloads ready');}).catch(error => {
+        if(!downloads.controller.signal.aborted) {
+          setDownloadStatus('Downloads can be retried using the buttons');
+          setZipError(error instanceof Error ? error.message : 'Could not prepare downloads.');
+        }
+      });
+    }, 200);
+    return () => {clearTimeout(timer);downloads.dispose();};
+  }, [students,stats,answerKey]);
   const handleDownloadPdf = async () => {
     if (!students.length || isZipping || isPdf) return;
     setIsPdf(true); setZipProgress(0); setZipError(null);
-    const controller = new AbortController(); zipController.current = controller;
+    const downloads=getDownloads();
+    const controller = downloads.controller;
     try {
-      const blob = await getPdf(controller);
+      const blob = await downloads.pdf();
       controller.signal.throwIfAborted();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -188,39 +199,12 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
     setZipError(null);
     setZipProgress(0);
 
-    const controller = new AbortController();
-    zipController.current = controller;
+    const downloads=getDownloads();
+    const controller = downloads.controller;
     try {
-      const folder = 'ChilliMark_Annotated_Student_Sheets/';
-      const entries: ArchiveEntry[] = [{ name: folder + 'ChilliMark_Annotated_Report.pdf', data: await getPdf(controller) }];
-      setZipProgress(0);
-      for (const [idx, student] of students.entries()) {
-        const safeName = student.name.replace(/\s+/g, '_');
-        const prefix = String(idx + 1).padStart(2, '0');
-        const response = await fetch(student.annotatedDataUrl, {
-          signal: controller.signal,
-        });
-        if (!response.ok)
-          throw new Error(`Could not read marked sheet for ${student.name}`);
-        entries.push({
-          name: `${folder}${prefix}_${safeName}_Score_${student.score}of${student.total}.png`,
-          data: await response.blob(),
-        });
-      }
-      entries.push({
-        name: folder + 'Class_Scores_Summary.csv',
-        data: exportStudentScoresCsv(students, answerKey),
-      });
-      entries.push({
-        name: folder + 'Question_Statistics.csv',
-        data: exportQuestionStatsCsv(stats),
-      });
-      const content = await exportArchive(
-        entries,
-        (percent) => setZipProgress(Math.round(percent)),
-        controller.signal,
-      );
+      const content = await downloads.all();
       controller.signal.throwIfAborted();
+      setDownloadStatus('Downloads ready');
 
       const url = URL.createObjectURL(content);
       const link = document.createElement('a');
@@ -296,6 +280,10 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           {zipError}
         </p>
       )}
+      <p role="status" className="flex items-center gap-2 text-xs text-[#d6b7bd]">
+        {downloadStatus.startsWith('Preparing') && <Loader2 className="w-3 h-3 animate-spin" />}
+        {downloadStatus}
+      </p>
       {/* Top Banner / Hero Summary */}
       <div className="bg-gradient-to-r from-[#571622] via-[#8c1529] to-[#360b13] rounded-2xl p-4 sm:p-5 text-white shadow-xl border border-[#8c1529]/60 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2">
@@ -361,7 +349,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           </button>
 
           <button
-            onClick={onReset}
+            onClick={() => {getDownloads().dispose();onReset();}}
             className="min-h-12 w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#f3b0ba] text-[#240c10] hover:bg-white border-2 border-white/50 text-base font-bold shadow-lg transition-colors cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" />
@@ -379,7 +367,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
       )}
       {/* Class Metric Highlights Grid */}
       {activeTab === 'itemStats' && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Total students */}
           <div className="bg-[#240c10] border border-[#571622] rounded-2xl p-4 shadow-md">
             <div className="flex items-center justify-between text-[#a39093] text-xs mb-1">
@@ -449,17 +437,6 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
             </p>
           </div>
 
-          {/* Pass Rate */}
-          <div className="bg-[#240c10] border border-[#571622] rounded-2xl p-4 shadow-md col-span-2 lg:col-span-1">
-            <div className="flex items-center justify-between text-[#a39093] text-xs mb-1">
-              <span>Pass Rate (≥50%)</span>
-              <Sparkles className="w-4 h-4 text-purple-400" />
-            </div>
-            <div className="text-2xl font-black text-white">{passRate}%</div>
-            <p className="text-[11px] text-[#8c676d] mt-1">
-              {passCount} of {totalStudents} passed
-            </p>
-          </div>
         </div>
       )}
       {/* Results navigation */}
@@ -592,11 +569,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-[#b1a1a4]">Score:</span>
                     <span
-                      className={`text-base font-extrabold ${
-                        currentStudent.percentage >= 50
-                          ? 'text-emerald-400'
-                          : 'text-red-400'
-                      }`}
+                      className="text-base font-extrabold text-white"
                     >
                       {currentStudent.score} / {currentStudent.total} (
                       {currentStudent.percentage}%)
@@ -771,7 +744,6 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                     <th className="py-3 px-4">Student</th>
                     <th className="py-3 px-4">Score</th>
                     <th className="py-3 px-4">Percentage</th>
-                    <th className="py-3 px-4">Verdict</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -780,7 +752,6 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                     .slice()
                     .sort((a, b) => b.score - a.score)
                     .map((student, rank) => {
-                      const isPassed = student.percentage >= 50;
                       return (
                         <tr
                           key={student.id}
@@ -802,24 +773,11 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                               </span>
                               <div className="w-16 bg-[#1a080a] h-2 rounded-full overflow-hidden border border-[#571622]">
                                 <div
-                                  className={`h-full ${
-                                    isPassed ? 'bg-emerald-500' : 'bg-red-500'
-                                  }`}
+                                  className="h-full bg-[#f3b0ba]"
                                   style={{ width: `${student.percentage}%` }}
                                 />
                               </div>
                             </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span
-                              className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                                isPassed
-                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
-                                  : 'bg-red-950 text-red-300 border border-red-700'
-                              }`}
-                            >
-                              {isPassed ? 'Pass' : 'Review Needed'}
-                            </span>
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="inline-flex items-center gap-1.5">
