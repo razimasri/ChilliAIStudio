@@ -45,6 +45,7 @@ export function reviewItem(
       student.rawDeskewedDataUrl ||
       student.annotatedDataUrl,
     currentResponse: false,
+    reviewReason: question.reviewReason,
     detectedLetters: question.boxes
       .filter((box) => box.bool)
       .map((box) => box.letter),

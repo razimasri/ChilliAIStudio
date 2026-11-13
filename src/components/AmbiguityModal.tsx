@@ -73,6 +73,7 @@ export function AmbiguityModal({
       <p role="status" className="text-sm text-emerald-300">
         {backgroundStatus}
       </p>
+      {item.reviewReason === 'no-mark' && <p className="rounded-lg border border-amber-800/60 bg-amber-950/30 p-3 text-sm text-amber-200">No mark was detected for this question. Check for light pencil, or choose Blank if it is unanswered.</p>}
       <p className="text-sm text-[#b1a1a4]">
         Click or tap an answer on the scan, or press its letter, to save it and
         go next. Previous lets you revise a decision. Use Unclear if you cannot

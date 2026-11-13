@@ -2,9 +2,9 @@
 import * as engine from "../../src/utils/omrEngine.ts";
 import { getCV } from "../../src/utils/cvLoader.ts";
 import { loadExamFile, getExamPage } from "../../src/utils/pdfProcessor.ts";
-export async function setup(name = "IGSample") {
+export async function setup(name = "IGSample", suppliedSource?: File) {
   const cv = await getCV();
-  const source = new File(
+  const source = suppliedSource || new File(
     [await (await fetch(`/samples/${name}.pdf`)).blob()],
     `${name}.pdf`,
     { type: "application/pdf" },

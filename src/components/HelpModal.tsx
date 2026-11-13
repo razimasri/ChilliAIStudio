@@ -75,7 +75,9 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
         </li>
         <li>
           <strong className="text-white">Review ambiguous answers.</strong>{' '}
-          Review starts as pages become available while marking continues. Click
+          Review starts as pages become available while marking continues.
+          Questions with no detected mark are also reviewed when they have an
+          answer-key entry: check for light pencil or confirm Blank. Click
           or tap an answer on the scan, press its letter, or choose Blank or
           Unclear. Your choice saves and goes next immediately. Previous
           revisits a decision. Results open automatically when all pages,
