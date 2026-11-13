@@ -23,7 +23,6 @@ import {
 import { markBatch } from './utils/markingBatch';
 import { canPrepareAhead } from './utils/pageLookahead';
 import { reviewItem } from './utils/reviewQueue';
-import { finalizeAnnotations } from './utils/finalizeAnnotations';
 import {
   gradeStudent,
   resolveStudentResponse,
@@ -312,10 +311,7 @@ export function App() {
       session.controller.signal.throwIfAborted();
       const corrected = [...new Set(session.queue.map(item => item.studentIndex))]
         .map(index => session.results[index]);
-      await finalizeAnnotations(corrected, session.params, session.controller.signal,
-        (student, completed, total) => setMarkingStatusText(
-          `Preparing corrected sheets (${completed}/${total}): ${student.name}…`,
-        ));
+      for (const student of corrected) student.annotationPending = true;
       finishMarking(session.results, session.params);
     } catch (error) {
       if (!session.controller.signal.aborted)
@@ -461,6 +457,7 @@ export function App() {
         {currentStep === 4 && (
           <ResultsDashboard
             students={studentResults}
+            params={sessionRef.current?.params ?? params}
             stats={examStats}
             answerKey={getParsedKey()}
             onReset={handleReset}

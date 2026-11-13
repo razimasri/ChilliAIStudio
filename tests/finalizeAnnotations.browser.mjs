@@ -34,6 +34,21 @@ try{
     Object.defineProperty(navigator,'deviceMemory',{configurable:true,value:8});
     const controller=new AbortController();const cancelled=finalizeAnnotations(students(),{},controller.signal,()=>{}).catch(e=>e);await tick();controller.abort();const aborted=await cancelled;check(aborted.name==='AbortError'&&live===0,'Cancellation must reject and stop all workers');
     const failed=finalizeAnnotations(students(),{},new AbortController().signal,()=>{}).catch(e=>e);await tick();const [client,job]=pending.entries().next().value;pending.delete(client);job.reject(Error('Encoder failed'));const failure=await failed;check(failure.message==='Encoder failed'&&live===0,'Failures must stop sibling workers and preserve the original error');
+    const {PreparedAnnotations}=await import('/src/utils/preparedAnnotations.ts');
+    const deferred=students().map(student=>({...student,annotationPending:true}));
+    const renders=new PreparedAnnotations(deferred,{});
+    let ready=0;renders.onReady=()=>ready++;
+    const all=renders.all();check(renders.all()===all,'Exports must share the same background job');
+    const firstReady=renders.sheet(deferred[0]);let allReady=false;void all.then(()=>allReady=true);
+    await tick();finishOne();await firstReady;
+    check(!allReady&&ready===1&&!deferred[0].annotationPending,'First preview must become available before the batch');
+    check(deferred[1].annotationPending,'Unrendered sheets must stay visibly pending');
+    while(pending.size){finishOne();await tick();}await all;
+    const beforeRequests=started.length;await renders.sheet(deferred[0]);await renders.all();
+    check(started.length===beforeRequests&&live===0,'Navigation and downloads must reuse finished images');renders.dispose();
+    const abortedRenders=new PreparedAnnotations(students().map(student=>({...student,annotationPending:true})),{});
+    const abortedSheet=abortedRenders.sheet(abortedRenders.students[0]).catch(error=>error);
+    await tick();abortedRenders.dispose();check((await abortedSheet).name==='AbortError'&&live===0,'Reset must cancel preview waiters and workers');
     releaseAllImages();return{peak,lowMemoryWorkers:1,stableAnswers:true,cancellation:true,failure:true};
   });assert.equal(report.peak,2);console.log(report);
 }finally{await browser.close();await server.close();}

@@ -17,8 +17,9 @@ import {
   Loader2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { PreparedAnnotations } from '../utils/preparedAnnotations';
 import { PreparedDownloads } from '../utils/preparedDownloads';
-import { StudentResult, QuestionStat } from '../types';
+import { StudentResult, QuestionStat, CalibrationParams } from '../types';
 import {
   exportStudentScoresCsv,
   exportQuestionStatsCsv,
@@ -26,6 +27,7 @@ import {
 
 interface ResultsDashboardProps {
   students: StudentResult[];
+  params?: CalibrationParams;
   stats: QuestionStat[];
   answerKey: Record<number, string>;
   onReset: () => void;
@@ -33,6 +35,7 @@ interface ResultsDashboardProps {
 
 export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   students,
+  params,
   stats,
   answerKey,
   onReset,
@@ -53,12 +56,29 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   }, [activeTab]);
   useEffect(() => setSheetZoom(1), [selectedStudentIdx]);
   const [isPdf, setIsPdf] = useState(false);
+  const annotationsRef = useRef<PreparedAnnotations>();
+  const [, refreshSheets] = useState(0);
+  const [annotationError, setAnnotationError] = useState<string | null>(null);
+  const getAnnotations = () => {
+    if (!annotationsRef.current || annotationsRef.current.controller.signal.aborted)
+      annotationsRef.current = new PreparedAnnotations(students, params);
+    return annotationsRef.current;
+  };
+  useEffect(() => {
+    const annotations = getAnnotations();
+    annotations.onReady = () => refreshSheets(value => value + 1);
+    setAnnotationError(null);
+    void annotations.all().catch(error => {
+      if (!annotations.controller.signal.aborted) setAnnotationError(String(error));
+    });
+    return () => { annotations.dispose(); annotationsRef.current = undefined; };
+  }, [students, params]);
   const downloadsRef = useRef<{students:StudentResult[]; stats:QuestionStat[]; key:Record<number,string>; job:PreparedDownloads}>();
   const getDownloads = () => {
     const cached=downloadsRef.current;
     if(cached && cached.students===students && cached.stats===stats && cached.key===answerKey && !cached.job.controller.signal.aborted) return cached.job;
     cached?.job.dispose();
-    const job=new PreparedDownloads(students,stats,answerKey);
+    const job=new PreparedDownloads(students,stats,answerKey, () => getAnnotations().all());
     downloadsRef.current={students,stats,key:answerKey,job};
     return job;
   };
@@ -145,8 +165,12 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   };
 
   // Download a single student's marked work
-  const handleDownloadSingleSheet = (student: StudentResult) => {
+  const handleDownloadSingleSheet = async (student: StudentResult) => {
     if (!student) return;
+    const annotations = getAnnotations();
+    try { await annotations.sheet(student); }
+    catch (error) { if (!annotations.controller.signal.aborted) setAnnotationError(String(error)); return; }
+    if (annotations.controller.signal.aborted) return;
     const link = document.createElement('a');
     link.href = student.annotatedDataUrl;
     const safeName = student.name.replace(/\s+/g, '_');
@@ -228,8 +252,12 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   };
 
   // High-fidelity student sheet print utility
-  const handlePrintSheet = (student: StudentResult) => {
+  const handlePrintSheet = async (student: StudentResult) => {
     if (!student) return;
+    const annotations = getAnnotations();
+    try { await annotations.sheet(student); }
+    catch (error) { if (!annotations.controller.signal.aborted) setAnnotationError(String(error)); return; }
+    if (annotations.controller.signal.aborted) return;
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.right = '0';
@@ -349,7 +377,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           </button>
 
           <button
-            onClick={() => {getDownloads().dispose();onReset();}}
+            onClick={() => {getDownloads().dispose();annotationsRef.current?.dispose();onReset();}}
             className="min-h-12 w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#f3b0ba] text-[#240c10] hover:bg-white border-2 border-white/50 text-base font-bold shadow-lg transition-colors cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" />
@@ -693,7 +721,12 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
               </div>
 
               <div className="w-full max-h-[75dvh] overflow-auto p-2 bg-[#110507] rounded-xl border border-[#571622]/50">
-                <img
+                {annotationError && <p role="alert">Could not prepare corrected sheets: {annotationError}
+                  <button onClick={() => { setAnnotationError(null); void getAnnotations().all().catch(error => setAnnotationError(String(error))); }}>Retry</button>
+                </p>}
+                {currentStudent.annotationPending ? <div role="status" className="flex items-center justify-center gap-3 min-h-64">
+                  <Loader2 className="animate-spin" aria-hidden="true" /> Preparing corrected sheet…
+                </div> : <img
                   src={currentStudent.annotatedDataUrl}
                   alt={`Annotated sheet for ${currentStudent.name}`}
                   className={`rounded-lg shadow-2xl border border-gray-600 ${sheetZoom === 1 ? 'max-w-full max-h-[70dvh] w-auto h-auto mx-auto object-contain' : 'max-w-none h-auto'}`}
@@ -702,7 +735,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                       ? undefined
                       : { width: `${sheetZoom * 100}%` }
                   }
-                />
+                />}
               </div>
             </div>
           </div>

@@ -13,11 +13,14 @@ export class PreparedDownloads {
     private students: StudentResult[],
     private stats: QuestionStat[],
     private answerKey: Record<number, string>,
+    private prepareSheets: () => Promise<void> = () => Promise.resolve(),
   ) {}
   pdf(): Promise<Blob> {
     this.controller.signal.throwIfAborted();
     if (!this.pdfJob) {
-      const promise = exportAnnotatedPdf(
+      const promise = this.prepareSheets().then(() => {
+        this.controller.signal.throwIfAborted();
+        return exportAnnotatedPdf(
         {
           students: this.students.map(
             ({
@@ -41,7 +44,8 @@ export class PreparedDownloads {
         },
         (percent) => this.onProgress?.("pdf", percent),
         this.controller.signal,
-      ).then((blob) => {
+      );
+      }).then((blob) => {
         this.onProgress?.("pdf", 100);
         return blob;
       });
