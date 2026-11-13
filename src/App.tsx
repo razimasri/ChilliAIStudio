@@ -22,7 +22,7 @@ import {
 } from './utils/imageStore';
 import { markBatch } from './utils/markingBatch';
 import { reviewItem } from './utils/reviewQueue';
-import { MarkingClient } from './utils/markingClient';
+import { finalizeAnnotations } from './utils/finalizeAnnotations';
 import {
   gradeStudent,
   resolveStudentResponse,
@@ -294,29 +294,14 @@ export function App() {
       return;
     session.finalizing = true;
     setFinalizing(true);
-    let client: MarkingClient | undefined;
-    const cancel = () => client?.dispose();
     try {
       session.controller.signal.throwIfAborted();
-      client = new MarkingClient();
-      session.controller.signal.addEventListener('abort', cancel, {
-        once: true,
-      });
-      for (const index of new Set(
-        session.queue.map((item) => item.studentIndex),
-      )) {
-        const student = session.results[index];
-        if (!student.rawDeskewedDataUrl) continue;
-        setMarkingStatusText(`Preparing corrected sheet for ${student.name}…`);
-        const old = student.annotatedDataUrl,
-          next = await client.annotate(student, session.params);
-        if (session.controller.signal.aborted) {
-          releaseImage(next);
-          return;
-        }
-        student.annotatedDataUrl = next;
-        if (old !== student.rawDeskewedDataUrl) releaseImage(old);
-      }
+      const corrected = [...new Set(session.queue.map(item => item.studentIndex))]
+        .map(index => session.results[index]);
+      await finalizeAnnotations(corrected, session.params, session.controller.signal,
+        (student, completed, total) => setMarkingStatusText(
+          `Preparing corrected sheets (${completed}/${total}): ${student.name}…`,
+        ));
       finishMarking(session.results, session.params);
     } catch (error) {
       if (!session.controller.signal.aborted)
@@ -324,8 +309,6 @@ export function App() {
           `Could not prepare corrected sheets: ${error instanceof Error ? error.message : String(error)}`,
         ]);
     } finally {
-      client?.dispose();
-      session.controller.signal.removeEventListener('abort', cancel);
       session.finalizing = false;
       setFinalizing(false);
     }

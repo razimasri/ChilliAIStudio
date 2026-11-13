@@ -1582,9 +1582,10 @@ export async function processStudentScan(
     studentState.score = calculateScore(studentState.responses, pageParams.key);
 
     const hasAmbiguity = studentState.incomplete.length > 0;
-    // Keep clean pixels for manual review or a geometry-repaired page.
+    // Keep clean pixels only for unresolved answers or existing manual corrections.
+    // A clean geometry repair can go directly to its final annotated image.
     let rawDeskewedDataUrl: string | undefined;
-    if (hasAmbiguity || geometry?.adjustments?.length) {
+    if (hasAmbiguity || geometry?.reviewQuestions?.length) {
       const cleanCanvas = createRasterCanvas();
       drawMat(cv, cleanCanvas, scaledScan);
       try { rawDeskewedDataUrl = await canvasImage(cleanCanvas); outputImages.push(rawDeskewedDataUrl); }

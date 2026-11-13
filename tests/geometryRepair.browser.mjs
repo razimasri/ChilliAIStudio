@@ -86,6 +86,30 @@ try {
     };
     params.columnLayout = e.calibrateColumnLayout(cv, rotated, params);
     rotated.delete();
+    // A repaired page with no remaining review must encode only its final sheet.
+    const cleanParams = {...params,key:{0:'A'}};
+    const originalToBlob = HTMLCanvasElement.prototype.toBlob;
+    let fullPageEncodes = 0;
+    HTMLCanvasElement.prototype.toBlob = function(...args) {
+      if(this.width===4800&&this.height===6840) fullPageEncodes++;
+      return originalToBlob.apply(this,args);
+    };
+    try {
+      const baseline = await e.processStudentScan(cv,source,'Encode check',0,cleanParams);
+      check(!baseline.hasAmbiguity,'Fixture must be a clean keyed page');
+      const center = baseline.questions[0].boxes[0].xy;
+      const adjustment = {question:0,letter:'A',from:center,to:center,deviation:[0,0]};
+      fullPageEncodes = 0;
+      const repaired = await e.processStudentScan(cv,source,'Encode check',0,cleanParams,undefined,{adjustments:[adjustment]});
+      check(fullPageEncodes===1&&!repaired.rawDeskewedDataUrl,'Clean repair should encode one final page, without an unused clean copy');
+      const left=await e.renderScanMat(cv,baseline.annotatedDataUrl),right=await e.renderScanMat(cv,repaired.annotatedDataUrl);
+      const a=left.data,b=right.data;
+      check(a.length===b.length&&a.every((value,index)=>value===b[index]),'Removing the redundant encode changed output pixels');
+      left.delete();right.delete();
+      fullPageEncodes = 0;
+      const reviewed = await e.processStudentScan(cv,source,'Encode check',0,cleanParams,undefined,{adjustments:[adjustment],reviewQuestions:[0]});
+      check(fullPageEncodes===2&&reviewed.rawDeskewedDataUrl,'Existing manual corrections must retain their clean native source');
+    } finally {HTMLCanvasElement.prototype.toBlob=originalToBlob;}
     const files = Array.from({ length: 4 }, (_, index) => ({
       id: String(index),
       name: "Native fixture",
