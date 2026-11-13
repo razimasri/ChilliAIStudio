@@ -27,7 +27,8 @@ export interface QuestionBox {
 
 export interface DetectedQuestion {
   number: number; // 0-indexed question number (r in Python)
-  response: string | false; // 'A', 'B', 'C', 'D', 'Blank', or false if ambiguous (>1 filled)
+  response: string | false; // Letter/Blank, or false while multiple/no-mark detection needs review
+  reviewReason?: 'multiple-marks' | 'no-mark';
   response_box: QuestionBox | null;
   boxes: QuestionBox[];
   questionNumber?: number;
@@ -75,6 +76,7 @@ export interface AmbiguityResolutionItem {
   cropDataUrl: string;
   currentResponse: string | false;
   detectedLetters: string[];
+  reviewReason?: DetectedQuestion['reviewReason'];
   choicesCount: number;
   answerRegions?: {letter:string;left:number;width:number}[];
 }

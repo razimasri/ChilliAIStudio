@@ -124,7 +124,7 @@ try {
       key: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i, 'A'])),
       names: [],
     };
-    // Fill one option and double-mark another to exercise both output paths.
+    // Compare an all-blank review page with a mixed single/multiple/no-mark page.
     context.fillStyle = 'black';
     context.fillRect(725, 1325, 65, 50);
     context.fillRect(725, 1925, 65, 50);
@@ -212,8 +212,8 @@ try {
           `Worker recognition differs for ${label}`,
         );
         check(
-          actual.hasAmbiguity === (label === 'ambiguous'),
-          'Fixture did not exercise expected ambiguity path',
+          actual.hasAmbiguity === true && actual.incomplete.length > 0,
+          'Keyed blank/multiple-mark fixtures must require review',
         );
         await equalPixels(reference.annotatedDataUrl, actual.annotatedDataUrl);
         if (actual.rawDeskewedDataUrl) {

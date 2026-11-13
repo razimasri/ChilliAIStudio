@@ -34,7 +34,10 @@ zoom buttons/Fit to change its display scale. Draw around one clean empty box,
 wait for Empty box ready, then choose Mark Exams. These controls change display
 and selection only; MCQ detection and grading are unchanged.
 
-For ambiguous answers, click/tap the answer on the snippet or choose its letter,
+Review includes multiple marks and apparent blanks with an answer-key entry,
+so light pencil is not silently treated as a final blank. Confirm a genuine
+blank with Blank. Unused questions without a key entry are not added for this
+check. Click/tap the answer on the snippet or choose its letter,
 Blank or Unclear. The choice saves and advances immediately; Previous revisits
 a decision. Review starts as completed pages become available while marking
 continues. Final results keep input order. When all pages and corrections are ready, choose View

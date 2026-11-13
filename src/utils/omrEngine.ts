@@ -1220,6 +1220,7 @@ export function find_responses(
   gray.delete();
 
   for (const question of student.questions) {
+    question.reviewReason = undefined;
     let filled = 0;
 
     for (const box of question.boxes) {
@@ -1259,6 +1260,7 @@ export function find_responses(
     }
 
     if (filled > 1) {
+      question.reviewReason = 'multiple-marks';
       question.response = false;
       student.incomplete.push(question);
     } else {
@@ -1276,6 +1278,13 @@ export function find_responses(
       if (!answered) {
         question.response = 'Blank';
         question.response_box = null;
+        // A keyed question may contain light pencil that the ink threshold missed.
+        // Ask the teacher; never infer a student's choice from the correct answer.
+        if (/^[A-Z]$/.test(params.key?.[question.number] || '')) {
+          question.response = false;
+          question.reviewReason = 'no-mark';
+          student.incomplete.push(question);
+        }
       }
     }
   }

@@ -46,6 +46,7 @@ export function resolveStudentResponse(
     throw new Error(`Invalid response for question ${number + 1}.`);
   }
   question.response = choice;
+  question.reviewReason = undefined;
   next.responses[number] = choice;
   question.response_box = null;
   for (const box of question.boxes) {

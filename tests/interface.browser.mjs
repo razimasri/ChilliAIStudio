@@ -599,10 +599,20 @@ try {
     exact: true,
   });
   await direct.click();
+  // All keyed apparent blanks now require explicit review, even on mostly empty fixtures.
+  const confirmEmptyTail = async student => {
+    for (let number = 3; number <= 12; number++) {
+      await review.getByRole('heading', { name: `Student ${student} · Question ${number}`, exact: true }).waitFor({ timeout: 120000 });
+      await review.getByText(/No mark was detected for this question/).waitFor();
+      await review.getByRole('button', { name: 'Blank (no mark)', exact: true }).click();
+    }
+  };
+  await confirmEmptyTail('01');
   await review
     .getByRole('heading', { name: /Student 02/ })
     .waitFor({ timeout: 120000 });
-  await review.getByRole('button', { name: 'Previous', exact: true }).click();
+  for (let previous = 0; previous < 11; previous++)
+    await review.getByRole('button', { name: 'Previous', exact: true }).click();
   await review.getByRole('heading', { name: /Student 01/ }).waitFor();
   assert.equal(
     await review
@@ -613,8 +623,10 @@ try {
   await review
     .getByRole('button', { name: 'Blank (no mark)', exact: true })
     .click();
+  await confirmEmptyTail('01');
   await review.getByRole('heading', { name: /Student 02/ }).waitFor();
   await review.getByRole('button', { name: 'Unclear', exact: true }).click();
+  await confirmEmptyTail('02');
   assert.equal(
     await page
       .getByRole('button', { name: 'View results', exact: true })
