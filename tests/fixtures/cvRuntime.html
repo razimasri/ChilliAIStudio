@@ -1,0 +1,6 @@
+<!doctype html><html><head><title>OpenCV runtime regression</title></head><body>
+<script type="module">
+import {getCV, getCVRuntimeInfo, supportsWasmSimd} from '/src/utils/cvLoader.ts';
+window.runtimeFixture = {getCV, getCVRuntimeInfo, supportsWasmSimd,
+  worker: () => new Worker(new URL('../helpers/runtimeSmoke.worker.ts', import.meta.url), {type:'module'})};
+</script></body></html>
