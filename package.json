@@ -32,10 +32,12 @@
     "test:auto-gate": "node tests/autoCapture.mjs",
     "test:auto-camera": "node tests/autoCamera.browser.mjs",
     "test:mobile-selection": "node tests/mobileSelection.browser.mjs",
-    "test:blank-review": "node tests/blankReview.browser.mjs"
+    "test:blank-review": "node tests/blankReview.browser.mjs",
+    "test:alignment-performance": "node tests/alignmentPerformance.browser.mjs",
+    "test:cv-runtime": "node tests/cvRuntime.browser.mjs",
+    "test:marking-speed": "node tests/markingSpeed.browser.mjs"
   },
   "dependencies": {
-    "@techstark/opencv-js": "^5.0.0-release.1",
     "canvas-confetti": "^1.9.4",
     "jszip": "^3.10.2",
     "lucide-react": "^1.16.0",
@@ -53,6 +55,7 @@
     "playwright": "^1.65.0",
     "tailwindcss": "^4.0.9",
     "typescript": "^5.7.3",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "@techstark/opencv-js": "5.0.0-release.1"
   }
 }

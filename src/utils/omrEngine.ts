@@ -1,3 +1,4 @@
+import { isOpaqueMonochrome, warpMonochrome } from './monochromeAlignment';
 import { boundedContourMask, translateContour } from './contourMasks';
 import {
   CalibrationParams,
@@ -222,10 +223,13 @@ export function normaliseDeskewAngle(rawAngle: number): number {
   return angle;
 }
 
+/** Single-channel alignment is an opt-in experiment; SIMD colour is faster overall. */
+export interface AlignmentOptions { singleChannel?: boolean; }
 export function rotation(
   cv: any,
-  inputPage: any
-): { rotated: any; image: any; rect: [number, number, number, number]; angle: number } {
+  inputPage: any,
+  options: AlignmentOptions = {},
+): { rotated: any; image: any; rect: [number, number, number, number]; angle: number; singleChannel: boolean } {
   // Match Python rotation(): retain the native page dimensions through deskew.
   // Orientation changes are explicit in the upload UI, before calibration.
   const page = inputPage;
@@ -239,13 +243,16 @@ export function rotation(
     matrix = cv.getRotationMatrix2D(
       new cv.Point(Math.floor(page.cols / 2), Math.floor(page.rows / 2)), angle, 1
     );
-    cv.warpAffine(page, rotated, matrix, new cv.Size(page.cols, page.rows));
+    const singleChannel = options.singleChannel === true && isOpaqueMonochrome(cv, page);
+    if (singleChannel) warpMonochrome(cv, page, rotated, matrix);
+    else cv.warpAffine(page, rotated, matrix, new cv.Size(page.cols, page.rows));
     rotatedBig = largest_cnt(cv, rotated);
     const bounding = cv.boundingRect(rotatedBig);
     return {
       image: rotated,
       rotated,
       angle,
+      singleChannel,
       rect: [bounding.x, bounding.y, bounding.width, bounding.height],
     };
   } catch (error) {
@@ -1493,6 +1500,7 @@ export async function processStudentScan(
   params: CalibrationParams,
   onProgress?: (step: string) => void,
   geometry?: MarkingGeometryOptions,
+  alignment?: AlignmentOptions,
 ): Promise<StudentResult> {
   onProgress?.('Loading scan at original resolution...');
   const pageMat = await renderScanMat(cv, scanDataUrl);
@@ -1501,7 +1509,7 @@ export async function processStudentScan(
   let rotated: any;
   let rect: [number, number, number, number];
   try {
-    ({ rotated, rect } = rotation(cv, pageMat));
+    ({ rotated, rect } = rotation(cv, pageMat, alignment));
   } finally {
     pageMat.delete();
   }

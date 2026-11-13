@@ -1,9 +1,9 @@
 // Test-only calibration of the bundled real samples, using existing engine rules.
 import * as engine from "../../src/utils/omrEngine.ts";
-import { getCV } from "../../src/utils/cvLoader.ts";
+import { getCV, type CVRuntime } from "./cvRuntimes";
 import { loadExamFile, getExamPage } from "../../src/utils/pdfProcessor.ts";
-export async function setup(name = "IGSample", suppliedSource?: File) {
-  const cv = await getCV();
+export async function setup(name = "IGSample", suppliedSource?: File, runtime: CVRuntime = "simd") {
+  const cv = await getCV(runtime);
   const source = suppliedSource || new File(
     [await (await fetch(`/samples/${name}.pdf`)).blob()],
     `${name}.pdf`,
