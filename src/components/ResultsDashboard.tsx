@@ -18,6 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { exportAnnotatedPdf } from '../utils/exportPdf';
 import { exportArchive, ArchiveEntry } from '../utils/exportArchive';
 import { StudentResult, QuestionStat } from '../types';
 import {
@@ -53,6 +54,8 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
     previousTab.current = activeTab;
   }, [activeTab]);
   useEffect(() => setSheetZoom(1), [selectedStudentIdx]);
+  const [isPdf, setIsPdf] = useState(false);
+  const pdfCache = useRef<{students: StudentResult[]; stats: QuestionStat[]; key: Record<number,string>; blob: Blob}>();
   const [isZipping, setIsZipping] = useState(false);
   const [zipProgress, setZipProgress] = useState(0);
   const [zipError, setZipError] = useState<string | null>(null);
@@ -152,9 +155,35 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
     document.body.removeChild(link);
   };
 
+  const getPdf = async (controller: AbortController) => {
+    if (pdfCache.current?.students === students && pdfCache.current.key === answerKey && pdfCache.current.stats === stats)
+      return pdfCache.current.blob;
+    const blob = await exportAnnotatedPdf({
+      students: students.map(({name, score, total, percentage, responses, annotatedDataUrl}) =>
+        ({name, score, total, percentage, responses, annotatedDataUrl})), stats, answerKey,
+    }, percent => setZipProgress(Math.round(percent)), controller.signal);
+    pdfCache.current = {students, stats, key: answerKey, blob};
+    return blob;
+  };
+  const handleDownloadPdf = async () => {
+    if (!students.length || isZipping || isPdf) return;
+    setIsPdf(true); setZipProgress(0); setZipError(null);
+    const controller = new AbortController(); zipController.current = controller;
+    try {
+      const blob = await getPdf(controller);
+      controller.signal.throwIfAborted();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url; link.download = 'ChilliMark_Annotated_Report.pdf'; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      if (!controller.signal.aborted) setZipError(error instanceof Error ? error.message : 'Could not create PDF.');
+    } finally { if (!controller.signal.aborted) { setIsPdf(false); setZipProgress(0); } }
+  };
+
   // Batch download all student marked works as a clean ZIP package
   const handleDownloadAllZip = async () => {
-    if (students.length === 0 || isZipping) return;
+    if (students.length === 0 || isZipping || isPdf) return;
     setIsZipping(true);
     setZipError(null);
     setZipProgress(0);
@@ -163,7 +192,8 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
     zipController.current = controller;
     try {
       const folder = 'ChilliMark_Annotated_Student_Sheets/';
-      const entries: ArchiveEntry[] = [];
+      const entries: ArchiveEntry[] = [{ name: folder + 'ChilliMark_Annotated_Report.pdf', data: await getPdf(controller) }];
+      setZipProgress(0);
       for (const [idx, student] of students.entries()) {
         const safeName = student.name.replace(/\s+/g, '_');
         const prefix = String(idx + 1).padStart(2, '0');
@@ -283,17 +313,23 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
 
         {/* Global Action Buttons */}
         <div className="flex flex-wrap items-center gap-3">
+          <button onClick={handleDownloadPdf} disabled={isPdf || isZipping || !students.length}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#240c10] border border-[#571622] font-semibold disabled:opacity-50"
+            title="All annotated sheets followed by class and question statistics">
+            {isPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {isPdf ? `Preparing PDF ${zipProgress}%...` : 'Download Annotated PDF'}
+          </button>
           {/* Prominent Download All Student Work (ZIP) */}
           <button
             onClick={handleDownloadAllZip}
-            disabled={isZipping || students.length === 0}
+            disabled={isZipping || isPdf || students.length === 0}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-black text-xs sm:text-sm shadow-lg transition-transform active:scale-95 disabled:opacity-50 cursor-pointer"
-            title="Download a ZIP archive containing all annotated student answer sheets"
+            title="Download a ZIP archive containing all annotated student answer sheets, PDF report and CSV statistics"
           >
             {isZipping ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin text-white" />
-                <span>Zipping {zipProgress}%...</span>
+                <span>Preparing download {zipProgress}%...</span>
               </>
             ) : (
               <>
