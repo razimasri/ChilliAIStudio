@@ -14,13 +14,14 @@ import {
   QuestionStat,
   MarkingConcurrency,
 } from './types';
-import { releaseUnusedSources } from './utils/pdfProcessor';
+import { releaseUnusedSources, warmExamPage } from './utils/pdfProcessor';
 import {
   releaseAllImages,
   releaseImage,
   releaseResultImages,
 } from './utils/imageStore';
 import { markBatch } from './utils/markingBatch';
+import { canPrepareAhead } from './utils/pageLookahead';
 import { reviewItem } from './utils/reviewQueue';
 import { finalizeAnnotations } from './utils/finalizeAnnotations';
 import {
@@ -57,6 +58,19 @@ export function App() {
     key: {},
     names: [],
   });
+
+  // Prepare just the first page while the teacher enters names/key. Its compressed
+  // raster is shared with calibration; no batch of native bitmaps is retained.
+  useEffect(() => {
+    if (!files.length || !files[0].sourceFile || !canPrepareAhead(files[0])) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void warmExamPage(files[0], controller.signal).catch(() => {
+        // Speculation is optional; requested page loading reports any real error.
+      });
+    }, 400);
+    return () => {clearTimeout(timer); controller.abort();};
+  }, [files]);
 
   const previousFiles = useRef<ExamFile[]>([]);
   const batchController = useRef<AbortController>();

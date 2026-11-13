@@ -155,11 +155,20 @@ export function getMarkingPage(
 ): Promise<PageImage> {
   return renderPage(file, undefined, signal, true);
 }
+/** Speculation uses the same renderer/pixels, at lower priority than requested pages. */
+export function prepareMarkingPage(file: ExamFile, signal?: AbortSignal): Promise<PageImage> {
+  return renderPage(file, undefined, signal, true, true);
+}
+export async function warmExamPage(file: ExamFile, signal?: AbortSignal): Promise<void> {
+  const page = await renderPage(file, undefined, signal, false, true);
+  page.release(); // The existing one-page compressed cache retains the raster.
+}
 function renderPage(
   file: ExamFile,
   previewEdge: number | undefined,
   signal: AbortSignal | undefined,
   asBitmap: boolean,
+  speculative = false,
 ): Promise<PageImage> {
   return queuePage(
     async () => {
@@ -295,7 +304,7 @@ function renderPage(
         }
       }
     },
-    !!previewEdge,
+    !!previewEdge || speculative,
     signal,
   );
 }

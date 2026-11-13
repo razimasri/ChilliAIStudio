@@ -2,6 +2,7 @@ import { preserveManualResponses } from "./grading";
 import { geometryConsensus } from "./geometryConsensus";
 import type { CalibrationParams, ExamFile, StudentResult } from "../types";
 import { getMarkingPage } from "./pdfProcessor";
+import { PageLookahead } from "./pageLookahead";
 import { releaseResultImages } from "./imageStore";
 import { MarkingClient } from "./markingClient";
 import { workerPlan, trialIsFaster } from "./workerPolicy";
@@ -71,6 +72,7 @@ export async function markBatch(
     clients.forEach((client) => client.dispose());
   };
   signal.addEventListener("abort", cancel, { once: true });
+  const lookahead = new PageLookahead(files, controller.signal);
   const jobs: Promise<void>[] = [];
   const grow = (target: number) => {
     while (clients.length < target) clients.push(new MarkingClient());
@@ -105,10 +107,9 @@ export async function markBatch(
               try {
                 report("Preparing full-resolution page…");
                 // Prepare one native input per available worker, without PNG round trips.
-                const raster = await getMarkingPage(
-                  files[index],
-                  controller.signal,
-                );
+                const prepared = lookahead.take(index);
+                lookahead.prepare(next);
+                const raster = await prepared;
                 let result: StudentResult;
                 try {
                   controller.signal.throwIfAborted();
@@ -188,6 +189,7 @@ export async function markBatch(
     } else if (automatic) phase = "selected";
     await run(files.length);
     signal.throwIfAborted();
+    lookahead.dispose();
     const repairs = geometryConsensus(results, params);
     for (const result of results)
       if (params.columnLayout && results.length >= 4)
@@ -296,6 +298,7 @@ export async function markBatch(
     releaseResultImages(results.filter(Boolean));
     throw error;
   } finally {
+    lookahead.dispose();
     signal.removeEventListener("abort", cancel);
     clients.forEach((client) => client.dispose());
   }

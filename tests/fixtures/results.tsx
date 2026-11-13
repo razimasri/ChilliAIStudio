@@ -16,4 +16,4 @@ const students: StudentResult[] = [
   annotatedDataUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==',
   originalDataUrl:'',hasAmbiguity:false,incomplete:[],
 }));
-createRoot(document.getElementById('root')!).render(<ResultsDashboard students={students} stats={calculateQuestionStats(students,answerKey,5)} answerKey={answerKey} onReset={()=>{}}/>);
+createRoot(document.getElementById('root')!).render(<React.StrictMode><ResultsDashboard students={students} stats={calculateQuestionStats(students,answerKey,5)} answerKey={answerKey} onReset={()=>{}}/></React.StrictMode>);
