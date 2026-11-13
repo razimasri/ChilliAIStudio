@@ -36,6 +36,20 @@ try {
     const secondBytes=new Uint8Array(await (await fetch(second)).arrayBuffer());
     if(firstBytes.length!==secondBytes.length||!firstBytes.every((v,i)=>v===secondBytes[i]))throw new Error('Repeated final rendering changed the output pixels');
     if(before!==JSON.stringify(student))throw new Error('Drawing mutated student state');
+    // Native pooled finalization must reproduce the serial renderer, including marks/logo.
+    const {finalizeAnnotations}=await import('/src/utils/finalizeAnnotations.ts');
+    const pooled=[structuredClone(student),structuredClone(student)];
+    pooled[1].id='2';pooled[1].index=1;
+    await finalizeAnnotations(pooled,params,new AbortController().signal,()=>{});
+    const expected=await e.renderScanMat(cv,first),expectedPixels=expected.data;
+    for(const result of pooled){
+      const actual=await e.renderScanMat(cv,result.annotatedDataUrl),pixels=actual.data;
+      if(pixels.length!==expectedPixels.length||!pixels.every((value,index)=>value===expectedPixels[index]))throw Error('Pooled annotation changed native output pixels');
+      if(result.score!==4||result.responses.join()!==student.responses.join())throw Error('Pooled rendering changed marking state');
+      actual.delete();
+    }
+    expected.delete();
+
     if(printed.length!==4||printed.some(text=>text!=='Score = 4 / 27'))throw new Error('Printed score disagrees: '+printed);
     // Verify the actual exported PNG contains the original printmark pixels.
     const logo=await e.loadImageElement('/icons/printmark.png');

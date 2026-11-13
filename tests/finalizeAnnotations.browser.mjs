@@ -1,0 +1,39 @@
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright';
+import {createServer} from 'vite';
+const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false}});await server.listen();
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
+try{
+  const page=await browser.newPage();await page.goto(server.resolvedUrls.local[0]);
+  const report=await page.evaluate(async()=>{
+    const {finalizeAnnotations}=await import('/src/utils/finalizeAnnotations.ts');
+    const {MarkingClient}=await import('/src/utils/markingClient.ts');
+    const {imageUrl,releaseAllImages}=await import('/src/utils/imageStore.ts');
+    const check=(ok,msg)=>{if(!ok)throw Error(msg);};
+    Object.defineProperty(navigator,'hardwareConcurrency',{configurable:true,value:8});
+    Object.defineProperty(navigator,'deviceMemory',{configurable:true,value:8});
+    let live=0,peak=0,started=[];
+    window.Worker=class{constructor(){live++;peak=Math.max(peak,live);}terminate(){if(!this.closed){this.closed=true;live--;}}};
+    const pending=new Map(),originalDispose=MarkingClient.prototype.dispose;
+    MarkingClient.prototype.annotate=function(student){started.push(student.index);return new Promise((resolve,reject)=>pending.set(this,{student,resolve,reject}));};
+    MarkingClient.prototype.dispose=function(error){const job=pending.get(this);if(job){pending.delete(this);job.reject(error||new DOMException('Cancelled','AbortError'));}originalDispose.call(this,error);};
+    const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+    const students=()=>Array.from({length:4},(_,index)=>({index,name:'S'+index,rawDeskewedDataUrl:'raw'+index,annotatedDataUrl:'raw'+index,score:2,total:3,responses:['A','Blank','C']}));
+    const finishOne=()=>{const [client,job]=pending.entries().next().value;pending.delete(client);const url=imageUrl(new Blob([String(job.student.index)]));job.resolve(url);return url;};
+    const group=students(),before=JSON.stringify(group.map(s=>s.responses));
+    const work=finalizeAnnotations(group,{},new AbortController().signal,()=>{});
+    await tick();check(started.length===2&&live===2,'Two jobs should overlap');
+    const first=finishOne();await tick();check(started.length===3,'Next job should start without waiting for the other worker');
+    while(pending.size){finishOne();await tick();}await work;
+    check(live===0&&peak===2,'Pool must stay bounded and dispose workers');
+    check(group[0].annotatedDataUrl===first,'Outputs stay attached to the correct student');
+    check(JSON.stringify(group.map(s=>s.responses))===before,'Annotation must not change answers');
+    check(group.every(s=>s.score===2&&s.annotatedDataUrl.startsWith('blob:')),'Final native output URLs must be retained');
+    Object.defineProperty(navigator,'deviceMemory',{configurable:true,value:4});
+    started=[];const low=finalizeAnnotations(students(),{},new AbortController().signal,()=>{});await tick();check(started.length===1,'Low-memory devices must use one worker');while(pending.size){finishOne();await tick();}await low;
+    Object.defineProperty(navigator,'deviceMemory',{configurable:true,value:8});
+    const controller=new AbortController();const cancelled=finalizeAnnotations(students(),{},controller.signal,()=>{}).catch(e=>e);await tick();controller.abort();const aborted=await cancelled;check(aborted.name==='AbortError'&&live===0,'Cancellation must reject and stop all workers');
+    const failed=finalizeAnnotations(students(),{},new AbortController().signal,()=>{}).catch(e=>e);await tick();const [client,job]=pending.entries().next().value;pending.delete(client);job.reject(Error('Encoder failed'));const failure=await failed;check(failure.message==='Encoder failed'&&live===0,'Failures must stop sibling workers and preserve the original error');
+    releaseAllImages();return{peak,lowMemoryWorkers:1,stableAnswers:true,cancellation:true,failure:true};
+  });assert.equal(report.peak,2);console.log(report);
+}finally{await browser.close();await server.close();}
