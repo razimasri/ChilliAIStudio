@@ -60,6 +60,7 @@ export interface StudentResult {
   responses: (string | false)[];
   annotatedDataUrl: string;
   originalDataUrl: string;
+  annotationPending?: boolean; // Scores are final; native corrected sheet is still being rendered
   rawDeskewedDataUrl?: string; // Lossless, registered 4800 × 6840 scan for corrections
   hasAmbiguity: boolean;
   incomplete: DetectedQuestion[];

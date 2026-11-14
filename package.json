@@ -36,6 +36,7 @@
     "test:alignment-performance": "node tests/alignmentPerformance.browser.mjs",
     "test:cv-runtime": "node tests/cvRuntime.browser.mjs",
     "test:marking-speed": "node tests/markingSpeed.browser.mjs",
+    "test:background-annotations": "node tests/backgroundAnnotations.browser.mjs",
     "test:annotation-finalization": "node tests/finalizeAnnotations.browser.mjs",
     "test:page-lookahead": "node tests/pageLookahead.browser.mjs",
     "test:prepared-downloads": "node tests/preparedDownloads.browser.mjs",

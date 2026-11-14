@@ -35,6 +35,7 @@ export async function finalizeAnnotations(
           }
           const previous = student.annotatedDataUrl;
           student.annotatedDataUrl = image;
+          student.annotationPending = false;
           if(previous !== student.rawDeskewedDataUrl) releaseImage(previous);
           completed++;
           progress(student, completed, pending.length);
