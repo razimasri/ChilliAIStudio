@@ -96,6 +96,8 @@ Validation passed: pure gate tests including 30 cycles; a production-built 30-sh
 
 ### Camera permissions
 
-Loading the app does not request camera access. Camera Scan opens the photo picker only on click; Batch Scan and Auto Scan mount the live scanner only on click, where `getUserMedia` requests access. `metadata.json` deliberately has no startup frame permission request: declaring `camera` there can cause AI Studio's host to ask before the user chooses scanning.
+The app calls `getUserMedia` only after Batch Scan or Auto Scan is clicked; Camera Scan opens the photo picker on click. Keep `camera` in `metadata.json`'s `requestFramePermissions`: AI Studio needs this declaration to delegate camera access to the embedded app. Removing it can block live scanning without showing a browser permission prompt.
 
-A camera-enabled iframe must still receive camera delegation from its embedding host (`allow="camera"` and a compatible Permissions Policy). Removing the startup request does not bypass that requirement. If Studio does not delegate access without its startup prompt, live scanning must be opened in a standalone tab or the embedding host must provide permission on demand.
+The host controls when its permission prompt appears. The embedded app cannot defer the Studio host's startup permission flow by removing its required capability declaration. A standalone deployment still opens the camera only when requested by the user.
+
+Validation includes the desktop/mobile request-timing test and a real Chromium media-stream test in cross-origin iframes, checking both delegated and blocked camera access. The latter uses Chromium's fake camera device rather than mocking `getUserMedia`; Studio's own wrapper is not available locally.

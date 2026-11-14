@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {chromium} from 'playwright';
 import {createServer} from 'vite';
-assert.deepEqual(JSON.parse(await readFile('metadata.json','utf8')).requestFramePermissions,[]);
+assert.deepEqual(JSON.parse(await readFile('metadata.json','utf8')).requestFramePermissions,['camera']);
 const server=await createServer({server:{host:'127.0.0.1',port:0,hmr:false}});
 await server.listen();
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox','--disable-dev-shm-usage']});
@@ -21,5 +21,5 @@ try {
     await page.getByText('Camera access was not allowed.',{exact:false}).waitFor();
     await page.close();
   }
-  console.log('Desktop and mobile: no camera request on load; clicking Batch Scan requests access and handles denial. No Studio startup camera request.');
+  console.log('Desktop and mobile: no camera request on load; clicking Batch Scan requests access and handles denial. Studio camera delegation remains declared.');
 } finally {await browser.close();await server.close();}
