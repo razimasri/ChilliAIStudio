@@ -11,6 +11,7 @@ interface AmbiguityModalProps {
   onCancel?: () => void;
   onNext?: () => void;
   backgroundStatus?: string;
+  fullPageDataUrl?: string;
 }
 export function AmbiguityModal({
   item,
@@ -22,9 +23,13 @@ export function AmbiguityModal({
   onCancel,
   onNext,
   backgroundStatus,
+  fullPageDataUrl,
 }: AmbiguityModalProps) {
   const choice = item.currentResponse;
   const [zoom, setZoom] = useState(1);
+  const [showPage, setShowPage] = useState(false);
+  const [pageZoom, setPageZoom] = useState(1);
+  useEffect(() => setPageZoom(1), [item.studentIndex]);
   useEffect(
     () => setZoom(1),
     [currentIndex, item.studentIndex, item.questionNumber],
@@ -51,7 +56,7 @@ export function AmbiguityModal({
     return () => window.removeEventListener('keydown', key);
   }, [item.studentIndex, item.questionNumber, letters.join(''), onResolve]);
   return (
-    <Dialog titleId="review-title" className="max-w-2xl p-4 sm:p-6 space-y-4">
+    <Dialog titleId="review-title" className={`${showPage ? 'max-w-6xl' : 'max-w-2xl'} p-4 sm:p-6 space-y-4`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-amber-300">
@@ -79,6 +84,29 @@ export function AmbiguityModal({
         go next. Previous lets you revise a decision. Use Unclear if you cannot
         determine the intended answer.
       </p>
+      {fullPageDataUrl && <button
+        onClick={() => setShowPage(value => !value)}
+        aria-expanded={showPage}
+        aria-controls="review-full-page"
+        className="min-h-11 px-4 rounded-xl border border-[#b1a1a4] bg-[#571622]"
+      >{showPage ? 'Hide full page' : 'Show full page'}</button>}
+      <div className={showPage && fullPageDataUrl ? 'grid gap-4 lg:grid-cols-2 lg:items-start' : ''}>
+        {showPage && fullPageDataUrl && <section id="review-full-page" aria-label="Full student page" className="min-w-0 space-y-2">
+          <div role="group" aria-label="Full page zoom" className="flex items-center justify-between gap-2">
+            <span className="text-sm">Full page · {item.studentName}</span>
+            <div className="flex items-center gap-2">
+              <button aria-label="Zoom full page out" disabled={pageZoom === 1} onClick={() => setPageZoom(value => Math.max(1, value - 0.5))} className="min-h-11 min-w-11 rounded-lg bg-[#571622] disabled:opacity-40">−</button>
+              <button aria-label="Fit full page" onClick={() => setPageZoom(1)} className="min-h-11 px-2 rounded-lg bg-[#571622]">Fit</button>
+              <button aria-label="Zoom full page in" disabled={pageZoom === 5} onClick={() => setPageZoom(value => Math.min(5, value + 0.5))} className="min-h-11 min-w-11 rounded-lg bg-[#571622] disabled:opacity-40">+</button>
+            </div>
+          </div>
+          <div key={item.studentIndex} tabIndex={0} aria-label="Full page image, scroll to inspect" className="overflow-auto max-h-[55dvh] lg:max-h-[70dvh] rounded-xl bg-white p-2">
+            <img src={fullPageDataUrl} alt={`Full answer sheet for ${item.studentName}`} decoding="async"
+              className={pageZoom === 1 ? 'block mx-auto max-w-full max-h-[52dvh] lg:max-h-[67dvh] w-auto h-auto' : 'block max-w-none h-auto'}
+              style={pageZoom === 1 ? undefined : {width: `${pageZoom * 100}%`}} />
+          </div>
+        </section>}
+        <div className="min-w-0 space-y-4">
       <div
         className="flex justify-end items-center gap-2"
         role="group"
@@ -181,6 +209,8 @@ export function AmbiguityModal({
             Next
           </button>
         )}
+      </div>
+        </div>
       </div>
     </Dialog>
   );
