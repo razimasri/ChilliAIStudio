@@ -17,8 +17,8 @@
       const root = document.createElement('div');
       document.body.appendChild(root);
       window.selections = [];
-      createRoot(root).render(
-        React.createElement(AmbiguityModal, {
+      const app = createRoot(root);
+      const props = {
           item: {
             studentIndex: 0,
             studentName: 'Review test',
@@ -35,8 +35,11 @@
             window.selections.push(choice);
           },
           backgroundStatus: 'Background marking: 1 of 3 pages complete',
-        }),
-      );
+      };
+      window.showReview = (overrides = {}) => app.render(React.createElement(AmbiguityModal, {
+        ...props, item: {...props.item, ...overrides},
+      }));
+      window.showReview();
     </script>
   </body>
 </html>

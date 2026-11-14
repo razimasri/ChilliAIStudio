@@ -22,6 +22,7 @@ export interface QuestionBox {
   xy: [number, number]; // [x, y] center coordinate relative to question area
   letter: string; // 'A', 'B', 'C', 'D', ...
   colour: 'green' | 'red' | 'yellow' | null;
+  inkCount?: number; // Existing thresholded pixel count, retained only for review hints
   bool: boolean; // True if filled
 }
 
@@ -78,6 +79,7 @@ export interface AmbiguityResolutionItem {
   currentResponse: string | false;
   detectedLetters: string[];
   reviewReason?: DetectedQuestion['reviewReason'];
+  suggestedResponse?: 'Blank' | 'Unclear';
   choicesCount: number;
   answerRegions?: {letter:string;left:number;width:number}[];
 }

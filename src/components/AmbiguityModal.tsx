@@ -26,6 +26,7 @@ export function AmbiguityModal({
   fullPageDataUrl,
 }: AmbiguityModalProps) {
   const choice = item.currentResponse;
+  const suggestion = !choice ? item.suggestedResponse : undefined;
   const [zoom, setZoom] = useState(1);
   const [showPage, setShowPage] = useState(false);
   const [pageZoom, setPageZoom] = useState(1);
@@ -78,7 +79,6 @@ export function AmbiguityModal({
       <p role="status" className="text-sm text-emerald-300">
         {backgroundStatus}
       </p>
-      {item.reviewReason === 'no-mark' && <p className="rounded-lg border border-amber-800/60 bg-amber-950/30 p-3 text-sm text-amber-200">No mark was detected for this question. Check for light pencil, or choose Blank if it is unanswered.</p>}
       <p className="text-sm text-[#b1a1a4]">
         Click or tap an answer on the scan, or press its letter, to save it and
         go next. Previous lets you revise a decision. Use Unclear if you cannot
@@ -185,12 +185,21 @@ export function AmbiguityModal({
             key={value}
             aria-pressed={choice === value}
             onClick={() => choose(value)}
-            className={`min-h-12 rounded-xl border text-sm ${choice === value ? 'bg-[#8c1529] border-white' : 'bg-[#18090b] border-[#571622]'}`}
+            aria-describedby={suggestion === value ? 'review-guidance' : undefined}
+            className={`min-h-12 rounded-xl border text-sm font-semibold ${choice === value ? 'bg-[#8c1529] border-white' : suggestion === value ? 'bg-amber-300 text-[#240c10] border-amber-200' : 'bg-[#18090b] border-[#571622]'}`}
           >
             {value === 'Blank' ? 'Blank (no mark)' : value}
           </button>
         ))}
       </div>
+      <p id="review-guidance" role="status"
+        className={`h-16 overflow-auto rounded-lg border p-2 text-sm leading-5 ${suggestion ? 'border-amber-800/60 bg-amber-950/30 text-amber-200' : 'border-transparent text-[#b1a1a4]'}`}>
+        {choice ? 'Answer saved. Use Previous to revise a decision.' :
+          item.reviewReason === 'no-mark' ? 'No mark detected. Check for light pencil, or choose Blank.' :
+          suggestion === 'Unclear' ? 'Two marks have similar ink levels. Choose an answer or Unclear.' :
+          item.reviewReason === 'multiple-marks' ? 'Multiple marks detected. Choose the intended answer or Unclear.' :
+          'Choose the intended answer, Blank, or Unclear.'}
+      </p>
       <div className="flex justify-between gap-3">
         <button
           onClick={() => {
