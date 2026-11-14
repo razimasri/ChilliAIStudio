@@ -14,7 +14,7 @@ export interface ExamFile {
   rotation: number;
   pageIndex: number;
   totalPages: number;
-  width: number; // Native raster width; PDF pages are rendered at 600 DPI
+  width: number; // PDF 600-DPI reference width for memory planning; images use native pixels
   height: number; // Swapped with width on manual 90-degree rotation
 }
 

@@ -2,6 +2,8 @@ import * as pdfjsLib from "pdfjs-dist";
 import { ExamFile } from "../types";
 import { canvasBlob, imageUrl, releaseImage } from "./imageStore";
 import { queuePage } from "./pageQueue";
+import { scanProfile, type ScanProfile } from './pdfScanProfile';
+import type { AlignmentOptions } from './omrEngine';
 import { PDF_POINTS_PER_INCH, SCAN_DPI } from "./pageGeometry";
 
 // Set up worker
@@ -25,9 +27,10 @@ export interface PdfProgressInfo {
 }
 
 const sources = new Map<File, Promise<pdfjsLib.PDFDocumentProxy>>();
+const profiles = new Map<File, Map<number, Promise<ScanProfile>>>();
 const thumbnails = new Map<string, { file: File; blob: Blob }>();
 let cached:
-  { file: File; page: number; rotation: number; blob: Blob } | undefined;
+  { file: File; page: number; rotation: number; blob: Blob; alignment?: AlignmentOptions } | undefined;
 
 function documentFor(file: File): Promise<pdfjsLib.PDFDocumentProxy> {
   let promise = sources.get(file);
@@ -139,8 +142,9 @@ export interface PageImage {
   url: string;
   release: () => void;
   bitmap?: ImageBitmap;
+  alignment?: AlignmentOptions;
 }
-/** Return a disposable page image. Full rasters use exactly the existing 600-DPI render settings. */
+/** Return a disposable page image. Full rasters use native scan resolution from 300 DPI, capped at 600 DPI. */
 export function getExamPage(
   file: ExamFile,
   previewEdge?: number,
@@ -203,12 +207,13 @@ function renderPage(
             bitmap.close();
             signal.throwIfAborted();
           }
-          return { url: file.dataUrl, bitmap, release: () => bitmap.close() };
+          return { url: file.dataUrl, bitmap, alignment: cached.alignment, release: () => bitmap.close() };
         }
         const url = imageUrl(cached.blob);
-        return { url, release: () => releaseImage(url) };
+        return { url, alignment: cached.alignment, release: () => releaseImage(url) };
       }
       const canvas = document.createElement("canvas");
+      let alignment: AlignmentOptions | undefined;
       let page: pdfjsLib.PDFPageProxy | undefined;
       let sourceUrl: string | undefined;
       let rotated: HTMLCanvasElement | undefined;
@@ -222,6 +227,16 @@ function renderPage(
           const native = page.getViewport({
             scale: SCAN_DPI / PDF_POINTS_PER_INCH,
           });
+          let renderDpi = SCAN_DPI;
+          if (!previewEdge) {
+            let pages = profiles.get(file.sourceFile);
+            if (!pages) {pages = new Map(); profiles.set(file.sourceFile, pages);}
+            let profile = pages.get(file.pageIndex);
+            if (!profile) {profile = scanProfile(page); pages.set(file.pageIndex, profile);}
+            renderDpi = (await profile).renderDpi;
+            signal?.throwIfAborted();
+            if (renderDpi !== SCAN_DPI) alignment = {sourceScale: renderDpi / SCAN_DPI};
+          }
           const viewport = previewEdge
             ? page.getViewport({
                 scale:
@@ -231,7 +246,7 @@ function renderPage(
                     previewEdge / Math.max(native.width, native.height),
                   ),
               })
-            : native;
+            : page.getViewport({scale: renderDpi / PDF_POINTS_PER_INCH});
           canvas.width = Math.ceil(viewport.width - 1e-7);
           canvas.height = Math.ceil(viewport.height - 1e-7);
           const context = canvas.getContext("2d");
@@ -274,7 +289,7 @@ function renderPage(
             bitmap.close();
             signal.throwIfAborted();
           }
-          return { url: file.dataUrl, bitmap, release: () => bitmap.close() };
+          return { url: file.dataUrl, bitmap, alignment, release: () => bitmap.close() };
         }
         const blob = await canvasBlob(output);
         signal?.throwIfAborted();
@@ -289,9 +304,10 @@ function renderPage(
             page: file.pageIndex,
             rotation: file.rotation,
             blob,
+            alignment,
           };
         const url = imageUrl(blob);
-        return { url, release: () => releaseImage(url) };
+        return { url, alignment, release: () => releaseImage(url) };
       } finally {
         signal?.removeEventListener("abort", abort);
         page?.cleanup();
@@ -319,6 +335,7 @@ export function releaseUnusedSources(
     if (!file || retained.has(file)) continue;
     const source = sources.get(file);
     sources.delete(file);
+    profiles.delete(file);
     if (cached?.file === file) cached = undefined;
     for (const [key, entry] of thumbnails)
       if (entry.file === file) thumbnails.delete(key);

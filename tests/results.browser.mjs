@@ -46,7 +46,7 @@ try {
   assert.equal(value(5,'Unclear %'),'67');
   const pdfBytes=await download('Download Annotated PDF');
   const pdf=await PDFDocument.load(pdfBytes);
-  assert.equal(pdf.getCreator(),'ChilliMark Birdseye 2.4');
+  assert.equal(pdf.getCreator(),'ChilliMark Birdseye 2.5');
   await writeFile('/tmp/chilli-restyled-report.pdf',pdfBytes);
   assert.equal(pdf.getPageCount(),7,'Three sheets, summary, two option panels and comparison');
   const pdfText=await page.evaluate(async bytes=>{

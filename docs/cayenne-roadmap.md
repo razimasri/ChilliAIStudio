@@ -6,6 +6,6 @@ Planned teacher quality-of-life work:
 - Post-correction tools and workflow.
 - Page reordering.
 
-These are future-version ideas; the current release remains v2.4 Birdseye.
+These are future-version ideas; the current release remains v2.5 Birdseye.
 Do not infer a pass grade from a fixed percentage. Scores and distributions are
 descriptive; any future grading policy needs an explicit teacher-defined scheme.

@@ -1,6 +1,6 @@
 # Phone camera scanning
 
-Current release: **v2.4 Birdseye**. Versioned sections below record when features were introduced.
+Current release: **v2.5 Birdseye**. Versioned sections below record when features were introduced.
 
 Camera capture is an additional, browser-only input path. PDF and scanned-image upload, calibration, answer recognition, scoring, review, export and branding retain their existing implementations.
 

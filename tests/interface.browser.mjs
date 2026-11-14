@@ -24,11 +24,11 @@ try {
       isMobile: width < 500,
     });
     await page.goto(origin);
-    assert.match(await page.title(), /v2\.4 Birdseye/);
+    assert.match(await page.title(), /v2\.5 Birdseye/);
     await page.getByRole('button', { name: 'Guide', exact: true }).click();
     const guide = page.getByRole('dialog', { name: 'ChilliMark Guide' });
     await guide.waitFor();
-    await guide.getByText('v2.4 Birdseye', { exact: true }).waitFor();
+    await guide.getByText('v2.5 Birdseye', { exact: true }).waitFor();
     assert.equal(
       await guide
         .getByText(/fine-tuning handles|Load 10 Demo|Mark Threshold/)

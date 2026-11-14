@@ -1,3 +1,4 @@
+import type { AlignmentOptions } from './omrEngine';
 import type { MarkingGeometryOptions, CalibrationParams, StudentResult } from "../types";
 import type {
   MarkingRequest,
@@ -96,9 +97,10 @@ export class MarkingClient {
     params: CalibrationParams,
     progress: (message: string) => void,
     geometry?: MarkingGeometryOptions,
+    alignment?: AlignmentOptions,
   ): Promise<StudentResult> {
     const reply = await this.request(
-      { type: "mark", input, name, index, params, geometry },
+      { type: "mark", input, name, index, params, geometry, alignment },
       progress,
     );
     if (reply.type !== "marked") throw new Error("Unexpected marking reply.");

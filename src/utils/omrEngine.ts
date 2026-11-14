@@ -150,10 +150,10 @@ export function get_thresh(cv: any, image: any, blur = true): any {
  *   largest = cv2.approxPolyDP(largest, 0.01 * cv2.arcLength(largest, True), True)
  *   return largest
  */
-export function largest_cnt(cv: any, image: any): any {
+export function largest_cnt(cv: any, image: any, sourceScale = 1): any {
   // The 200px border and 4,000,000px bounding-area cutoff are defined at
-  // the original scan/template resolution. Downsampling changes the contour
-  // used for rotation and registration, especially around thin printed lines.
+  // 600-DPI reference resolution. A verified native-PDF scale changes only
+  // these alignment supports; box detection still runs on the canonical canvas.
   const gray = new cv.Mat();
   if (image.channels() === 4) {
     cv.cvtColor(image, gray, cv.COLOR_RGBA2GRAY);
@@ -166,14 +166,15 @@ export function largest_cnt(cv: any, image: any): any {
   const thresh = new cv.Mat();
   cv.threshold(gray, thresh, 0, 255, cv.THRESH_BINARY_INV | cv.THRESH_OTSU);
   gray.delete();
-  cv.rectangle(thresh, new cv.Point(0, 0), new cv.Point(thresh.cols, thresh.rows), new cv.Scalar(0), 200);
+  cv.rectangle(thresh, new cv.Point(0, 0), new cv.Point(thresh.cols, thresh.rows), new cv.Scalar(0), Math.max(1, Math.round(200 * sourceScale)));
 
   const cnts = new cv.MatVector();
   const hier = new cv.Mat();
   let largest: any = null;
   try {
     cv.findContours(thresh, cnts, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-    let maxArea = 4000000;
+    const minimumArea = 4000000 * sourceScale * sourceScale;
+    let maxArea = minimumArea;
     for (let i = 0; i < cnts.size(); i++) {
       const contour = cnts.get(i);
       const boundingArea = area(cv, contour);
@@ -186,7 +187,7 @@ export function largest_cnt(cv: any, image: any): any {
       }
     }
     if (!largest) {
-      throw new Error('No alignment rectangle larger than 4,000,000 pixels found. Check scan resolution and orientation.');
+      throw new Error(`No alignment rectangle larger than ${Math.round(minimumArea).toLocaleString('en-US')} pixels found. Check scan resolution and orientation.`);
     }
     const approx = new cv.Mat();
     cv.approxPolyDP(largest, approx, 0.01 * cv.arcLength(largest, true), true);
@@ -224,7 +225,7 @@ export function normaliseDeskewAngle(rawAngle: number): number {
 }
 
 /** Single-channel alignment is an opt-in experiment; SIMD colour is faster overall. */
-export interface AlignmentOptions { singleChannel?: boolean; }
+export interface AlignmentOptions { singleChannel?: boolean; sourceScale?: number; }
 export function rotation(
   cv: any,
   inputPage: any,
@@ -238,7 +239,10 @@ export function rotation(
   let matrix: any = null;
   const rotated = new cv.Mat();
   try {
-    big = largest_cnt(cv, page);
+    const sourceScale = options.sourceScale ?? 1;
+    if (!Number.isFinite(sourceScale) || sourceScale < 0.5 || sourceScale > 1)
+      throw new Error('Unsupported alignment scale.');
+    big = largest_cnt(cv, page, sourceScale);
     const angle = normaliseDeskewAngle(cv.minAreaRect(big).angle);
     matrix = cv.getRotationMatrix2D(
       new cv.Point(Math.floor(page.cols / 2), Math.floor(page.rows / 2)), angle, 1
@@ -246,7 +250,7 @@ export function rotation(
     const singleChannel = options.singleChannel === true && isOpaqueMonochrome(cv, page);
     if (singleChannel) warpMonochrome(cv, page, rotated, matrix);
     else cv.warpAffine(page, rotated, matrix, new cv.Size(page.cols, page.rows));
-    rotatedBig = largest_cnt(cv, rotated);
+    rotatedBig = largest_cnt(cv, rotated, sourceScale);
     const bounding = cv.boundingRect(rotatedBig);
     return {
       image: rotated,

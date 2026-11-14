@@ -47,7 +47,7 @@ try {
     Object.defineProperty(window,'ImageCapture',{value:undefined});
   });
   await page.goto(server.resolvedUrls.local[0]);
-  assert.match(await page.title(),/v2\.3 Birdseye/);
+  assert.match(await page.title(),/v2\.5 Birdseye/);
   await page.getByRole('button',{name:'Batch Scan',exact:true}).click();
   let dialog=page.getByRole('dialog',{name:'Batch Scan',exact:true});await dialog.waitFor();
   const capture=dialog.getByRole('button',{name:'Capture',exact:true});
