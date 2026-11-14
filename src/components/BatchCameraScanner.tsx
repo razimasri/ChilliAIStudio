@@ -23,7 +23,7 @@ function Thumbnail({ page, className = '' }: { page: BatchPage; className?: stri
 function LargePreview({ page, number, onClose }: { page: BatchPage; number: number; onClose: () => void }) {
   const url = useUrl(page.file);
   return <div className="space-y-2 rounded-xl border border-[#571622] p-3">
-    <div className="flex items-center justify-between"><h3>Sheet {number}</h3><button onClick={onClose} className="min-h-11 px-3">Close preview</button></div>
+    <div className="flex items-center justify-between"><h3>Sheet {number}</h3><button onClick={onClose} className="btn btn-secondary">Close preview</button></div>
     <img src={url || undefined} alt={`Corrected sheet ${number}`} className="w-full max-h-[55dvh] object-contain" style={{ transform: `rotate(${page.rotation}deg)` }} />
   </div>;
 }
@@ -201,13 +201,13 @@ export default function BatchCameraScanner({ onClose, onConfirm, initialAuto = f
           {recent && <Thumbnail page={recent} className="w-14 h-20 object-contain rounded bg-black" />}
           <p role="status" className={`text-sm ${status.startsWith('Captured') || status.includes('added') || status.includes('replaced') ? 'text-emerald-300' : 'text-[#d8c7ca]'}`}>{status}</p>
         </div>
-        {!ready && !busy && <button onClick={() => setCameraAttempt(value => value + 1)} className="min-h-11 rounded-xl bg-[#571622] px-4">Try opening camera again</button>}
+        {!ready && !busy && <button onClick={() => setCameraAttempt(value => value + 1)} className="btn btn-secondary">Try opening camera again</button>}
         <div className="sticky bottom-0 bg-[#240c10] py-2 flex flex-wrap gap-2">
-          <button onClick={() => void capture()} disabled={busy || !ready} className="min-h-14 flex-1 rounded-xl bg-[#8c1529] px-6 text-lg font-bold flex gap-2 items-center justify-center disabled:opacity-40"><Camera />{replaceId ? 'Capture replacement' : 'Capture'}</button>
-          <button onClick={() => recent && retake(recent.id)} disabled={busy || !pages.length} className="min-h-11 rounded-xl bg-[#571622] px-3 disabled:opacity-40">Retake Last Scan</button>
-          {automatic && <button disabled={busy} onClick={() => { gate.current.setPaused(!paused); setPaused(!paused); }} className="min-h-11 rounded-xl bg-[#571622] px-4 disabled:opacity-40">{paused ? 'Resume' : 'Pause'}</button>}
-          <button onClick={review} disabled={busy || !pages.length} className="min-h-11 rounded-xl bg-emerald-900 px-4 font-semibold disabled:opacity-40">Finish Scanning</button>
-          <button onClick={onClose} className="min-h-11 px-3">Cancel</button>
+          <button onClick={() => void capture()} disabled={busy || !ready} className="btn btn-primary min-h-14 flex-1 text-lg"><Camera />{replaceId ? 'Capture replacement' : 'Capture'}</button>
+          <button onClick={() => recent && retake(recent.id)} disabled={busy || !pages.length} className="btn btn-secondary">Retake Last Scan</button>
+          {automatic && <button disabled={busy} onClick={() => { gate.current.setPaused(!paused); setPaused(!paused); }} className="btn btn-secondary">{paused ? 'Resume' : 'Pause'}</button>}
+          <button onClick={review} disabled={busy || !pages.length} className="btn btn-primary">Finish Scanning</button>
+          <button onClick={onClose} className="btn btn-secondary">Cancel</button>
         </div>
       </> : <>
         <p className="text-sm text-[#d8c7ca]">Check sheet order and orientation. Remove or retake any unwanted scan. Confirming adds these pages to your exam; calibration and marking come afterwards.</p>
@@ -227,9 +227,9 @@ export default function BatchCameraScanner({ onClose, onConfirm, initialAuto = f
           </article>)}
         </div>
         <div className="sticky bottom-0 bg-[#240c10] py-2 flex flex-wrap items-center gap-2">
-          <button disabled={busy} onClick={() => { setSelected(undefined); setReady(false); setMode('camera'); }} className="min-h-11 rounded-xl bg-[#571622] px-4 disabled:opacity-40">Add more sheets</button>
-          <button onClick={() => void confirm()} disabled={busy || !pages.length} className="min-h-11 rounded-xl bg-[#8c1529] px-5 font-bold disabled:opacity-40 ml-auto">Confirm batch</button>
-          <button onClick={onClose} className="min-h-11 px-3">Cancel</button>
+          <button disabled={busy} onClick={() => { setSelected(undefined); setReady(false); setMode('camera'); }} className="btn btn-secondary">Add more sheets</button>
+          <button onClick={() => void confirm()} disabled={busy || !pages.length} className="btn btn-primary ml-auto">Confirm batch</button>
+          <button onClick={onClose} className="btn btn-secondary">Cancel</button>
         </div>
         {busy && <p role="status" className="flex gap-2 items-center"><LoaderCircle className="animate-spin" />{status}</p>}
       </>}

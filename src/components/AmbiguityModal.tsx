@@ -88,7 +88,7 @@ export function AmbiguityModal({
         onClick={() => setShowPage(value => !value)}
         aria-expanded={showPage}
         aria-controls="review-full-page"
-        className="min-h-11 px-4 rounded-xl border border-[#b1a1a4] bg-[#571622]"
+        className="btn btn-secondary"
       >{showPage ? 'Hide full page' : 'Show full page'}</button>}
       <div className={showPage && fullPageDataUrl ? 'grid gap-4 lg:grid-cols-2 lg:items-start' : ''}>
         {showPage && fullPageDataUrl && <section id="review-full-page" aria-label="Full student page" className="min-w-0 space-y-2">
@@ -197,14 +197,14 @@ export function AmbiguityModal({
             onBack?.();
           }}
           disabled={!onBack || currentIndex === 0}
-          className="min-h-12 px-4 rounded-xl bg-[#571622] disabled:opacity-40"
+          className="btn btn-secondary min-h-12"
         >
           Previous
         </button>
         {choice && (
           <button
             onClick={onNext}
-            className="min-h-12 px-4 rounded-xl bg-[#8c1529]"
+            className="btn btn-primary min-h-12"
           >
             Next
           </button>

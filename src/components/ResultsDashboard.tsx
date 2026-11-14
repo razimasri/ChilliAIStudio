@@ -330,7 +330,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
         {/* Global Action Buttons */}
         <div className="flex flex-wrap items-center gap-3">
           <button onClick={handleDownloadPdf} disabled={isPdf || isZipping || !students.length}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#240c10] border border-[#571622] font-semibold disabled:opacity-50"
+            className="btn btn-secondary"
             title="All annotated sheets followed by class and question statistics">
             {isPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             {isPdf ? `Preparing PDF ${zipProgress}%...` : 'Download Annotated PDF'}
@@ -339,7 +339,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
           <button
             onClick={handleDownloadAllZip}
             disabled={isZipping || isPdf || students.length === 0}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-black text-xs sm:text-sm shadow-lg transition-transform active:scale-95 disabled:opacity-50 cursor-pointer"
+            className="btn btn-secondary"
             title="Download a ZIP archive containing all annotated student answer sheets, PDF report and CSV statistics"
           >
             {isZipping ? (
@@ -360,7 +360,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
 
           <button
             onClick={handleDownloadScoresCsv}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#240c10] text-[#fbe1e5] hover:bg-[#341117] border border-[#571622] font-semibold text-xs sm:text-sm shadow-md transition-colors cursor-pointer"
+            className="btn btn-secondary"
             title="Export answer key, student responses, scores, and class statistics"
           >
             <FileSpreadsheet className="w-4 h-4 text-[#f3b0ba]" />
@@ -369,7 +369,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
 
           <button
             onClick={handleDownloadStatsCsv}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#240c10] text-[#fbe1e5] hover:bg-[#341117] border border-[#571622] font-semibold text-xs sm:text-sm shadow-md transition-colors cursor-pointer"
+            className="btn btn-secondary"
             title="Export item difficulty statistics as CSV"
           >
             <BarChart3 className="w-4 h-4 text-[#f3b0ba]" />
@@ -378,7 +378,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
 
           <button
             onClick={() => {getDownloads().dispose();annotationsRef.current?.dispose();onReset();}}
-            className="min-h-12 w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#f3b0ba] text-[#240c10] hover:bg-white border-2 border-white/50 text-base font-bold shadow-lg transition-colors cursor-pointer"
+            className="btn btn-primary min-h-12 w-full sm:w-auto"
           >
             <RotateCcw className="w-4 h-4" />
             <span>Mark Another Exam</span>
@@ -609,7 +609,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                         onClick={() =>
                           handleDownloadSingleSheet(currentStudent)
                         }
-                        className="flex-1 py-2 px-3 rounded-lg bg-gradient-to-r from-[#8c1529] to-[#b71c35] hover:opacity-95 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow cursor-pointer"
+                        className="btn btn-secondary flex-1 text-sm"
                         title="Download this student's annotated sheet image"
                       >
                         <Download className="w-3.5 h-3.5" />
@@ -617,7 +617,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                       </button>
                       <button
                         onClick={() => handlePrintSheet(currentStudent)}
-                        className="p-2 rounded-lg bg-[#240c10] hover:bg-[#341117] border border-[#571622] text-[#fbe1e5] text-xs font-semibold flex items-center justify-center transition cursor-pointer"
+                        className="btn btn-secondary"
                         title="Print this student's marked sheet"
                         aria-label="Print sheet"
                       >

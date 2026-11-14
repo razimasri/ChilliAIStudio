@@ -10,6 +10,23 @@
   }
 }
 
+/* Shared action buttons. Green advances the workflow; secondary actions use wine. */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 min-h-11 rounded-xl border px-4 py-2 font-semibold transition-colors cursor-pointer;
+    @apply focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply bg-[#087a48] border-[#15945d] text-white enabled:hover:bg-[#09643f];
+  }
+  .btn-secondary {
+    @apply bg-[#571622] border-[#7a2030] text-[#f3e7e9] enabled:hover:bg-[#6e1c2b];
+  }
+  .btn-danger {
+    @apply bg-[#240c10] border-[#7a2030] text-red-300 enabled:hover:bg-[#571622];
+  }
+}
+
 /* Document Laser Scanner Animations */
 @keyframes laserScan {
   0% {

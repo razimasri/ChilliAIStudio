@@ -936,7 +936,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
               disabled={
                 !previewUrl || !!templateError || params.x2 <= params.x1
               }
-              className="min-h-12 flex-1 lg:w-full px-5 bg-[#8c1529] rounded-xl font-semibold disabled:opacity-40"
+              className="btn btn-primary min-h-12 flex-1 lg:w-full"
             >
               Next: Select Box
             </button>
@@ -951,7 +951,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                 isDrawingBox ||
                 isSnapping
               }
-              className="min-h-12 w-full sm:w-auto lg:w-full px-5 bg-emerald-700 rounded-xl font-semibold disabled:opacity-40"
+              className="btn btn-primary min-h-12 w-full sm:w-auto lg:w-full"
             >
               Mark Exams
             </button>
