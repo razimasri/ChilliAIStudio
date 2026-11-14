@@ -46,6 +46,10 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
   const [selectedStudentIdx, setSelectedStudentIdx] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [sheetZoom, setSheetZoom] = useState(1);
+  const sheetScrollRef = useRef<HTMLDivElement>(null);
+  const moveStudent = (direction: number) => setSelectedStudentIdx(index =>
+    Math.max(0, Math.min(students.length - 1, index + direction)),
+  );
   const tabsRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const previousTab = useRef(activeTab);
@@ -54,7 +58,10 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
       panelRef.current?.scrollIntoView({ block: 'start' });
     previousTab.current = activeTab;
   }, [activeTab]);
-  useEffect(() => setSheetZoom(1), [selectedStudentIdx]);
+  useEffect(() => {
+    setSheetZoom(1);
+    sheetScrollRef.current?.scrollTo({top: 0, left: 0});
+  }, [selectedStudentIdx]);
   const [isPdf, setIsPdf] = useState(false);
   const annotationsRef = useRef<PreparedAnnotations>();
   const [, refreshSheets] = useState(0);
@@ -531,29 +538,29 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
       >
         {/* TAB 1: ANNOTATED SHEETS VIEW */}
         {activeTab === 'sheets' && currentStudent && (
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem] gap-6">
-            {/* Left Column: Student Selector and Question Breakdown */}
-            <div className="contents lg:block lg:col-start-2 lg:row-start-1 lg:space-y-6">
-              {/* Candidate Selector Card */}
-              <div className="order-1 lg:order-none bg-[#240c10] border border-[#571622] rounded-2xl p-5 shadow-md space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-white">
-                    Select student
-                  </h4>
-                  <span className="text-xs text-[#a39093]">
-                    {selectedStudentIdx + 1} of {students.length}
-                  </span>
-                </div>
-
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem] gap-4 items-start">
+            {/* Navigation stays with the top-aligned sheet, independent of sidebar height. */}
+            <div role="region"
+              aria-label="Marked sheet viewer"
+              tabIndex={0}
+              onKeyDown={event => {
+                if (event.target !== event.currentTarget || event.ctrlKey || event.metaKey || event.altKey || event.repeat ||
+                    (event.target as HTMLElement).closest('select, input, textarea, button')) return;
+                if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                  event.preventDefault();
+                  moveStudent(event.key === 'ArrowLeft' ? -1 : 1);
+                }
+              }}
+              className="sheet-viewer order-1 lg:order-none lg:col-start-1 lg:row-start-1 lg:sticky lg:top-32 self-start min-w-0 w-full bg-[#18090b] border border-[#571622] rounded-2xl p-3 flex flex-col items-stretch relative shadow-inner min-h-0 focus-visible:outline-2 focus-visible:outline-white">
                 {/* Navigation stepper */}
-                <div className="flex items-center gap-2">
+                <div className="flex w-full items-center gap-2">
                   <button
                     disabled={selectedStudentIdx <= 0}
                     aria-label="Previous student"
                     onClick={() =>
                       setSelectedStudentIdx((prev) => Math.max(0, prev - 1))
                     }
-                    className="p-2 rounded-xl bg-[#1a080a] border border-[#571622] text-white disabled:opacity-30 hover:bg-[#571622]/40 transition-colors"
+                    className="btn btn-secondary min-w-11 px-0 shrink-0"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
@@ -563,7 +570,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                     onChange={(e) =>
                       setSelectedStudentIdx(parseInt(e.target.value))
                     }
-                    className="w-full bg-[#18090b] border border-[#571622] rounded-xl px-3 py-2 text-white font-medium text-sm focus:outline-none"
+                    className="min-w-0 flex-1 min-h-11 bg-[#18090b] border border-[#571622] rounded-xl px-2 py-2 text-white font-medium text-sm focus-visible:outline-2 focus-visible:outline-white"
                   >
                     {students.map((s, idx) => (
                       <option key={s.id} value={idx}>
@@ -572,6 +579,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                       </option>
                     ))}
                   </select>
+                  <span className="shrink-0 text-xs text-[#b1a1a4]" aria-live="polite">{selectedStudentIdx + 1}/{students.length}</span>
                   <button
                     disabled={selectedStudentIdx >= students.length - 1}
                     aria-label="Next student"
@@ -580,14 +588,87 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                         Math.min(students.length - 1, prev + 1),
                       )
                     }
-                    className="p-2 rounded-xl bg-[#1a080a] border border-[#571622] text-white disabled:opacity-30 hover:bg-[#571622]/40 transition-colors"
+                    className="btn btn-secondary min-w-11 px-0 shrink-0"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
 
+
+              <div className="w-full flex flex-wrap items-center justify-between gap-2 my-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+                  <span className="text-xs text-[#b1a1a4]">
+                    Green = Correct
+                  </span>
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block ml-3" />
+                  <span className="text-xs text-[#b1a1a4]">
+                    Red = Student Choice
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    aria-label="Zoom sheet out"
+                    disabled={sheetZoom === 1}
+                    onClick={() => setSheetZoom((z) => Math.max(1, z - 0.5))}
+                    className="btn btn-secondary min-w-11 px-0"
+                  >
+                    −
+                  </button>
+                  <button
+                    onClick={() => setSheetZoom(1)}
+                    className="btn btn-secondary text-sm"
+                  >
+                    Fit
+                  </button>
+                  <button
+                    aria-label="Zoom sheet in"
+                    disabled={sheetZoom === 4}
+                    onClick={() => setSheetZoom((z) => Math.min(4, z + 0.5))}
+                    className="btn btn-secondary min-w-11 px-0"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative w-full min-w-0">
+                <div ref={sheetScrollRef} aria-label="Sheet image, scroll to inspect" tabIndex={0}
+                  className="w-full max-h-[calc(100dvh-17rem)] overflow-auto p-2 bg-[#110507] rounded-xl border border-[#571622]/50">
+                {annotationError && <p role="alert">Could not prepare corrected sheets: {annotationError}
+                  <button onClick={() => { setAnnotationError(null); void getAnnotations().all().catch(error => setAnnotationError(String(error))); }}>Retry</button>
+                </p>}
+                {currentStudent.annotationPending ? <div role="status" className="flex items-center justify-center gap-3 min-h-64">
+                  <Loader2 className="animate-spin" aria-hidden="true" /> Preparing corrected sheet…
+                </div> : <img
+                  src={currentStudent.annotatedDataUrl}
+                  alt={`Annotated sheet for ${currentStudent.name}`}
+                  className={`rounded-lg shadow-2xl border border-gray-600 ${sheetZoom === 1 ? 'max-w-full max-h-[calc(100dvh-18rem)] w-auto h-auto mx-auto object-contain' : 'max-w-none h-auto'}`}
+                  style={
+                    sheetZoom === 1
+                      ? undefined
+                      : { width: `${sheetZoom * 100}%` }
+                  }
+                />}
+                </div>
+                <button aria-label="Previous student on sheet" title="Previous student"
+                  disabled={selectedStudentIdx === 0} onClick={() => moveStudent(-1)}
+                  className="sheet-edge-nav absolute left-2 top-1/2 -translate-y-1/2 z-10 min-h-16 min-w-11 rounded-xl border border-white/30 bg-black/65 text-white flex items-center justify-center focus-visible:outline-2 focus-visible:outline-white">
+                  <ChevronLeft aria-hidden="true" />
+                </button>
+                <button aria-label="Next student on sheet" title="Next student"
+                  disabled={selectedStudentIdx >= students.length - 1} onClick={() => moveStudent(1)}
+                  className="sheet-edge-nav absolute right-2 top-1/2 -translate-y-1/2 z-10 min-h-16 min-w-11 rounded-xl border border-white/30 bg-black/65 text-white flex items-center justify-center focus-visible:outline-2 focus-visible:outline-white">
+                  <ChevronRight aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+            {/* Student summary and question breakdown */}
+            <div className="contents lg:block lg:col-start-2 lg:row-start-1 lg:space-y-4">
+              {/* Student summary and sheet actions */}
+              <div className="order-2 lg:order-none bg-[#240c10] border border-[#571622] rounded-2xl p-4 shadow-md space-y-3">
                 {/* Current Student Scorecard */}
-                <div className="p-4 rounded-xl bg-[#1a080a] border border-[#571622] space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-[#b1a1a4]">Student:</span>
                     <span className="text-sm font-bold text-white">
@@ -678,64 +759,6 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
                     );
                   })}
                 </div>
-              </div>
-            </div>
-
-            {/* Right Column: High-Res Annotated Canvas Preview */}
-            <div className="order-2 lg:order-none lg:col-start-1 lg:row-start-1 min-w-0 bg-[#18090b] border border-[#571622] rounded-2xl p-4 flex flex-col items-center justify-center relative shadow-inner overflow-hidden min-h-0">
-              <div className="w-full flex flex-wrap items-center justify-between gap-3 mb-3 px-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
-                  <span className="text-xs text-[#b1a1a4]">
-                    Green = Correct
-                  </span>
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block ml-3" />
-                  <span className="text-xs text-[#b1a1a4]">
-                    Red = Student Choice
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    aria-label="Zoom sheet out"
-                    disabled={sheetZoom === 1}
-                    onClick={() => setSheetZoom((z) => Math.max(1, z - 0.5))}
-                    className="min-h-11 min-w-11 rounded bg-[#571622] disabled:opacity-40"
-                  >
-                    −
-                  </button>
-                  <button
-                    onClick={() => setSheetZoom(1)}
-                    className="min-h-11 px-3 text-sm"
-                  >
-                    Fit
-                  </button>
-                  <button
-                    aria-label="Zoom sheet in"
-                    disabled={sheetZoom === 4}
-                    onClick={() => setSheetZoom((z) => Math.min(4, z + 0.5))}
-                    className="min-h-11 min-w-11 rounded bg-[#571622] disabled:opacity-40"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              <div className="w-full max-h-[75dvh] overflow-auto p-2 bg-[#110507] rounded-xl border border-[#571622]/50">
-                {annotationError && <p role="alert">Could not prepare corrected sheets: {annotationError}
-                  <button onClick={() => { setAnnotationError(null); void getAnnotations().all().catch(error => setAnnotationError(String(error))); }}>Retry</button>
-                </p>}
-                {currentStudent.annotationPending ? <div role="status" className="flex items-center justify-center gap-3 min-h-64">
-                  <Loader2 className="animate-spin" aria-hidden="true" /> Preparing corrected sheet…
-                </div> : <img
-                  src={currentStudent.annotatedDataUrl}
-                  alt={`Annotated sheet for ${currentStudent.name}`}
-                  className={`rounded-lg shadow-2xl border border-gray-600 ${sheetZoom === 1 ? 'max-w-full max-h-[70dvh] w-auto h-auto mx-auto object-contain' : 'max-w-none h-auto'}`}
-                  style={
-                    sheetZoom === 1
-                      ? undefined
-                      : { width: `${sheetZoom * 100}%` }
-                  }
-                />}
               </div>
             </div>
           </div>
