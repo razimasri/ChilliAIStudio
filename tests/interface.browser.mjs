@@ -88,10 +88,10 @@ try {
     assert.equal(await proceed.isEnabled(), true);
     assert.equal(
       await page
-        .getByRole('region', { name: 'Names and answer key', exact: true })
+        .getByRole('region', { name: 'Exam pages', exact: true })
         .evaluate((el) => el === document.activeElement),
       true,
-      'Loading should move focus to setup',
+      'Loading should move focus to the page previews',
     );
     const bounds = await proceed.boundingBox();
     assert.ok(

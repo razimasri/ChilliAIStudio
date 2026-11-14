@@ -1,0 +1,7 @@
+# Setup flow and action buttons
+
+Loaded page thumbnails appear before the upload/camera panel in both document and visual order. On desktop the pages stay on the left and names/key on the right; mobile shows the pages first. Adding or replacing files moves focus and scroll position to the page section after loading finishes. Rotation, removal and editing details do not trigger this shift. The fixed readiness summary and Continue action remain available at the bottom.
+
+Shared `btn`, `btn-primary`, `btn-secondary` and `btn-danger` component classes define button geometry, colours, keyboard focus and disabled states. Workflow progression uses green: Continue, Next, Mark Exams, scan confirmations and Mark Another Exam. File sources, sample loading, downloads and secondary actions use wine. Destructive controls have a red label. Selection tools, tabs, thumbnails and answer hit regions retain their specialised interaction styles.
+
+Validation: production build, `node tests/setupFlow.browser.mjs`, `npm run test:desktop` and `npm run test:interface` with `CHROMIUM_PATH=/usr/bin/chromium`. Checks cover desktop/mobile thumbnail order and focus, appending and rotating pages, preview focus restoration, readiness and green progression styling, responsive calibration, touch/mouse/pen selection, correction navigation, marking and results CSV flow. Camera capability declarations and marking rules are outside this UI change.

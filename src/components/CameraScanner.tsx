@@ -100,10 +100,10 @@ export default function CameraScanner({ file, onClose, onRetry, onConfirm }: {
         {busy && <div role="status" aria-live="polite" className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-3 p-4 text-center"><LoaderCircle className="animate-spin" size={36} />{status}</div>}
       </div>
       <div className="flex flex-wrap gap-2 items-center sticky bottom-0 bg-[#240c10] py-2">
-        <button onClick={onRetry} className="min-h-11 px-4 rounded-xl bg-[#571622]">Retake photo</button>
-        {preview && <button disabled={busy} onClick={() => editing ? void update() : setEditing(true)} className="min-h-11 px-4 rounded-xl bg-[#571622] disabled:opacity-50">{editing ? 'Update preview' : 'Adjust corners'}</button>}
-        {preview && !editing && <button disabled={busy} onClick={() => void update((preview.rotation + 1) % 4)} className="min-h-11 px-4 rounded-xl bg-[#571622] disabled:opacity-50 flex items-center gap-2"><RotateCcw size={18} />Rotate 90°</button>}
-        <button disabled={busy || editing || Boolean(error) || !preview} onClick={() => void confirm()} className="min-h-11 px-5 rounded-xl bg-[#8c1529] font-bold disabled:opacity-40 ml-auto">Confirm scan</button>
+        <button onClick={onRetry} className="btn btn-secondary">Retake photo</button>
+        {preview && <button disabled={busy} onClick={() => editing ? void update() : setEditing(true)} className="btn btn-secondary">{editing ? 'Update preview' : 'Adjust corners'}</button>}
+        {preview && !editing && <button disabled={busy} onClick={() => void update((preview.rotation + 1) % 4)} className="btn btn-secondary"><RotateCcw size={18} />Rotate 90°</button>}
+        <button disabled={busy || editing || Boolean(error) || !preview} onClick={() => void confirm()} className="btn btn-primary ml-auto">Confirm scan</button>
       </div>
     </div>
   </Dialog>;

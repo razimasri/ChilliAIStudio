@@ -479,7 +479,7 @@ export function App() {
             <button
               disabled={finalizing}
               onClick={previousCorrection}
-              className="min-h-12 px-4 rounded-xl bg-[#571622] disabled:opacity-40"
+              className="btn btn-secondary min-h-12"
             >
               Previous correction
             </button>
@@ -489,7 +489,7 @@ export function App() {
                   setPageErrors([]);
                   void finishReview();
                 }}
-                className="min-h-12 px-5 rounded-xl bg-emerald-700 font-bold"
+                className="btn btn-primary min-h-12"
               >
                 Retry preparing results
               </button>

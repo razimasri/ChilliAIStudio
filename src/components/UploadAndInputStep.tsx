@@ -280,15 +280,17 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
   const namesMatch = studentCount === 0 || studentCount === files.length;
   const ready =
     files.length > 0 && parsedKey.length > 0 && namesMatch && !isLoadingFile;
-  const setupRef = useRef<HTMLElement>(null);
-  const previousCount = useRef(files.length);
+  const pagesRef = useRef<HTMLElement>(null);
+  const previousPageIds = useRef(new Set(files.map(file => file.id)));
   useEffect(() => {
-    if (previousCount.current === 0 && files.length > 0) {
-      setupRef.current?.scrollIntoView({ block: 'start' });
-      setupRef.current?.focus({ preventScroll: true });
+    if (isLoadingFile) return;
+    const addedPages = files.some(file => !previousPageIds.current.has(file.id));
+    previousPageIds.current = new Set(files.map(file => file.id));
+    if (addedPages) {
+      pagesRef.current?.scrollIntoView({ block: 'start' });
+      pagesRef.current?.focus({ preventScroll: true });
     }
-    previousCount.current = files.length;
-  }, [files.length]);
+  }, [files, isLoadingFile]);
   const clearPages = () => {
     onFilesChange([]);
     onStudentNamesChange('');
@@ -363,14 +365,14 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
             <button
               onClick={() => handleLoadDemo('cambridge')}
               disabled={isLoadingFile}
-              className="min-h-11 px-3 rounded-xl bg-[#8c1529] text-sm font-semibold"
+              className="btn btn-secondary text-sm"
             >
               Load Cambridge IGCSE Sample
             </button>
             <button
               onClick={() => handleLoadDemo('ibdp')}
               disabled={isLoadingFile}
-              className="min-h-11 px-3 rounded-xl bg-[#571622] text-sm font-semibold"
+              className="btn btn-secondary text-sm"
             >
               Load IBDP Sample
             </button>
@@ -402,89 +404,18 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
         onChange={event => { const file = event.target.files?.[0]; if (file) setCameraFile(file); event.target.value = ''; }} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
         <section
-          className={`${files.length ? 'order-2 lg:order-1' : 'order-1'} space-y-4`}
+          ref={pagesRef}
+          tabIndex={-1}
+          className="order-1 space-y-4 scroll-mt-20 outline-none"
           aria-label="Exam pages"
         >
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-            className={`rounded-2xl border-2 border-dashed ${isDragging ? 'border-[#f3b0ba]' : 'border-[#571622]'} bg-[#240c10] ${
-              files.length
-                ? 'p-5 flex flex-col md:flex-row md:items-center justify-between gap-4'
-                : 'p-8 min-h-64 flex flex-col items-center justify-center text-center gap-5'
-            }`}
-          >
-            {!files.length && <Upload className="w-12 h-12 text-[#f3b0ba]" />}
-            <div className={files.length ? 'space-y-1' : ''}>
-              <h2 className="font-bold">
-                {files.some((page) => page.isSample)
-                  ? 'Load your own exam'
-                  : files.length
-                    ? 'Add more scans'
-                    : 'Choose PDF or images'}
-              </h2>
-              <p className="text-sm text-[#b1a1a4] mt-1">
-                {files.some((page) => page.isSample)
-                  ? 'Replaces the sample and clears its names and answer key.'
-                  : files.length
-                    ? 'New pages are added at the end.'
-                    : 'Select files or drop them here. Scan at 600 DPI where possible.'}
-              </p>
-            </div>
-            <div className={`flex flex-col ${files.length ? 'items-start md:items-end' : 'items-center'} gap-3 max-w-xl`}>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isLoadingFile}
-                className="min-h-11 px-5 rounded-xl bg-[#8c1529] hover:bg-[#a61931] font-semibold transition-colors"
-              >
-                {files.some((page) => page.isSample)
-                  ? 'Choose my exam'
-                  : files.length
-                    ? 'Add files'
-                    : 'Choose files'}
-              </button>
-              <div className={`flex flex-wrap items-center ${files.length ? 'justify-start md:justify-end' : 'justify-center'} gap-2.5`}>
-                <button
-                  onClick={() => cameraInputRef.current?.click()}
-                  disabled={isLoadingFile}
-                  className="min-h-11 px-4 rounded-xl border border-[#8c1529] hover:bg-[#8c1529]/20 font-semibold flex items-center gap-2 transition-colors"
-                >
-                  <Camera size={20} />
-                  Camera Scan
-                </button>
-                <button
-                  onClick={() => { setAutoStart(false); setBatchScanning(true); }}
-                  disabled={isLoadingFile}
-                  className="min-h-11 px-4 rounded-xl bg-[#571622] hover:bg-[#6e1c2b] border border-[#7a2030] font-semibold flex items-center gap-2 transition-colors"
-                >
-                  <Camera size={20} />
-                  Batch Scan
-                </button>
-                <button
-                  onClick={() => { setAutoStart(true); setBatchScanning(true); }}
-                  disabled={isLoadingFile}
-                  className="min-h-11 px-4 rounded-xl bg-[#8c1529] hover:bg-[#a61931] font-semibold flex items-center gap-2 transition-colors"
-                >
-                  <Camera size={20} />
-                  Auto Scan
-                </button>
-              </div>
-              <p className={`text-xs text-[#b1a1a4] ${files.length ? 'text-left md:text-right max-w-sm' : 'text-center max-w-md'}`}>
-                Use the rear camera or choose a photo. If camera access is unavailable, use Choose files. Keep the full page visible on a contrasting surface.
-              </p>
-            </div>
-          </div>
           {files.length > 0 && (
             <div className="rounded-2xl border border-[#571622] bg-[#240c10] p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="font-bold">Loaded pages ({files.length})</h2>
                 <button
                   onClick={clearPages}
-                  className="min-h-11 px-2 text-red-300 text-sm"
+                  className="btn btn-danger text-sm"
                 >
                   Clear pages & names
                 </button>
@@ -545,12 +476,84 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
               </div>
             </div>
           )}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            className={`rounded-2xl border-2 border-dashed ${isDragging ? 'border-[#f3b0ba]' : 'border-[#571622]'} bg-[#240c10] ${
+              files.length
+                ? 'p-5 flex flex-col md:flex-row md:items-center justify-between gap-4'
+                : 'p-8 min-h-64 flex flex-col items-center justify-center text-center gap-5'
+            }`}
+          >
+            {!files.length && <Upload className="w-12 h-12 text-[#f3b0ba]" />}
+            <div className={files.length ? 'space-y-1' : ''}>
+              <h2 className="font-bold">
+                {files.some((page) => page.isSample)
+                  ? 'Load your own exam'
+                  : files.length
+                    ? 'Add more scans'
+                    : 'Choose PDF or images'}
+              </h2>
+              <p className="text-sm text-[#b1a1a4] mt-1">
+                {files.some((page) => page.isSample)
+                  ? 'Replaces the sample and clears its names and answer key.'
+                  : files.length
+                    ? 'New pages are added at the end.'
+                    : 'Select files or drop them here. Scan at 600 DPI where possible.'}
+              </p>
+            </div>
+            <div className={`flex flex-col ${files.length ? 'items-start md:items-end' : 'items-center'} gap-3 max-w-xl`}>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoadingFile}
+                className={`btn ${files.length ? 'btn-secondary' : 'btn-primary'}`}
+              >
+                {files.some((page) => page.isSample)
+                  ? 'Choose my exam'
+                  : files.length
+                    ? 'Add files'
+                    : 'Choose files'}
+              </button>
+              <div className={`flex flex-wrap items-center ${files.length ? 'justify-start md:justify-end' : 'justify-center'} gap-2.5`}>
+                <button
+                  onClick={() => cameraInputRef.current?.click()}
+                  disabled={isLoadingFile}
+                  className="btn btn-secondary"
+                >
+                  <Camera size={20} />
+                  Camera Scan
+                </button>
+                <button
+                  onClick={() => { setAutoStart(false); setBatchScanning(true); }}
+                  disabled={isLoadingFile}
+                  className="btn btn-secondary"
+                >
+                  <Camera size={20} />
+                  Batch Scan
+                </button>
+                <button
+                  onClick={() => { setAutoStart(true); setBatchScanning(true); }}
+                  disabled={isLoadingFile}
+                  className="btn btn-secondary"
+                >
+                  <Camera size={20} />
+                  Auto Scan
+                </button>
+              </div>
+              <p className={`text-xs text-[#b1a1a4] ${files.length ? 'text-left md:text-right max-w-sm' : 'text-center max-w-md'}`}>
+                Use the rear camera or choose a photo. If camera access is unavailable, use Choose files. Keep the full page visible on a contrasting surface.
+              </p>
+            </div>
+          </div>
         </section>
         <section
-          ref={setupRef}
           tabIndex={-1}
           aria-label="Names and answer key"
-          className={`${files.length ? 'order-1 lg:order-2' : 'order-2'} scroll-mt-20 outline-none rounded-2xl border border-[#571622] bg-[#240c10] p-4 sm:p-5 space-y-5`}
+          className="order-2 scroll-mt-20 outline-none rounded-2xl border border-[#571622] bg-[#240c10] p-4 sm:p-5 space-y-5"
         >
           <div>
             <h2 className="font-bold text-lg">Names & answer key</h2>
@@ -669,7 +672,7 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
           <button
             onClick={handleFormContinue}
             disabled={!ready}
-            className="min-h-12 px-5 rounded-xl font-bold bg-[#8c1529] disabled:bg-[#571622] disabled:text-[#b1a1a4] shrink-0"
+            className="btn btn-primary min-h-12 shrink-0"
           >
             Continue to calibration
           </button>
