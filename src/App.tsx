@@ -499,6 +499,10 @@ export function App() {
       {currentStep === 3 && ambiguityQueue[currentAmbiguityIdx] && (
         <AmbiguityModal
           item={ambiguityQueue[currentAmbiguityIdx]}
+          fullPageDataUrl={(() => {
+            const student = studentResults.find(result => result.index === ambiguityQueue[currentAmbiguityIdx].studentIndex);
+            return student?.rawDeskewedDataUrl || student?.originalDataUrl || student?.annotatedDataUrl;
+          })()}
           currentIndex={currentAmbiguityIdx}
           totalCount={ambiguityQueue.length}
           optionsCount={params.choices || 4}
