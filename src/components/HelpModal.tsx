@@ -12,9 +12,9 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
         <div>
           <div className="flex items-center gap-2">
             <img
-              src="/icons/Icon128.png"
+              src="/icons/printmark.png"
               alt="ChilliMark logo"
-              className="w-8 h-8 rounded bg-white p-0.5"
+              className="w-8 h-8 rounded bg-white p-0.5 object-contain"
             />
             <h2 id="guide-title" className="font-bold text-xl">
               ChilliMark Guide

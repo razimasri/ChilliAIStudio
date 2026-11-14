@@ -11,9 +11,9 @@ export function PdfLoadingOverlay({
     <Dialog titleId="loading-title" className="max-w-md p-6 space-y-4">
       <div className="flex items-center gap-3">
         <img
-          src="/icons/Icon128.png"
+          src="/icons/printmark.png"
           alt="ChilliMark logo"
-          className="w-11 h-11 rounded-lg bg-white p-1"
+          className="w-11 h-11 rounded-lg bg-white p-1 object-contain"
         />
         <h2 id="loading-title" className="text-xl font-bold">
           Reading your scans

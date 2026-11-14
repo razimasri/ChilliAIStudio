@@ -1035,7 +1035,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({
         <div className="space-y-1 text-center sm:text-left">
           <p className="text-[#fbe1e5] font-semibold flex items-center justify-center sm:justify-start gap-1.5">
             <img
-              src="/icons/Icon128.png"
+              src="/icons/printmark.png"
               alt="ChilliMark logo"
               className="w-8 h-8 rounded bg-white p-0.5 object-contain"
             />
