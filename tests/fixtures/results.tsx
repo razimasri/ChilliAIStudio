@@ -14,7 +14,7 @@ const students: StudentResult[] = [
   id:String(index), index, name:name as string, score:score as number, total:5, percentage:Number(score)*20,
   responses:responses as (string|false)[],
   questions:(responses as (string|false)[]).map((response,number)=>({number,response,boxes:[],response_box:null})),
-  annotatedDataUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==',
+  annotatedDataUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
   originalDataUrl:'',hasAmbiguity:false,incomplete:[],
 }));
 const pendingMode = new URLSearchParams(location.search).has('pending');
