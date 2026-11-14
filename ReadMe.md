@@ -1,7 +1,7 @@
 ![ChilliMark Logo](/icons/Banner.png)
-# ChilliMark — v2.4 Birdseye
+# ChilliMark — v2.5 Birdseye
 
-The v2.4 web release includes SIMD marking, bounded PDF preparation, background
+The v2.5 web release adds automatic native-resolution scanned-PDF preparation and alignment while retaining the canonical marking grid. It includes SIMD marking, bounded PDF preparation, background
 PDF/ZIP generation and printable class reports. See
 [PDF preparation and reports](docs/pdf-preparation-and-reports.md) for behaviour
 and validation, and [Version 3: Cayenne](docs/cayenne-roadmap.md) for planned
@@ -153,7 +153,7 @@ regenerated after updating; previously downloaded files are not rewritten.
 
 ## Web port: page geometry
 
-PDFs are rendered at 600 DPI. Only the first-page calibration template is
+Image-only scanned PDFs at 300–600 DPI are prepared near their native resolution, capped at 600 DPI. Lower-resolution or mixed/vector PDFs retain 600-DPI preparation for compatibility. Only the first-page calibration template is
 resized to 4800 × 6840 before rotation. Each student page keeps its own raster
 dimensions through rotation, then is scaled and translated using the detected
 alignment rectangle into the template's coordinate space. Question areas, box

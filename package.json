@@ -1,7 +1,7 @@
 {
   "name": "chillimark",
   "private": true,
-  "version": "2.4.0",
+  "version": "2.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
@@ -18,6 +18,8 @@
     "test:interface": "node tests/interface.browser.mjs",
     "test:desktop": "node tests/desktopLayout.browser.mjs",
     "test:worker-policy": "node tests/workerPolicy.mjs",
+    "test:native-pdf": "node tests/nativePdf.browser.mjs",
+    "test:pdf-scan-profile": "node tests/pdfScanProfile.browser.mjs",
     "test:resolution": "node tests/resolutionComparison.browser.mjs",
     "test:throughput": "node tests/markingThroughput.browser.mjs",
     "test:columns": "node tests/crossedOutColumns.browser.mjs",

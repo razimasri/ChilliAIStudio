@@ -124,6 +124,7 @@ export async function markBatch(
                     index === 0 && !params.columnLayout
                       ? { learnColumnLayout: true }
                       : undefined,
+                    raster.alignment,
                   );
                 } finally {
                   raster.release();
@@ -251,6 +252,7 @@ export async function markBatch(
                     ]),
                   ],
                 },
+                raster.alignment,
               );
             } finally {
               raster.release();

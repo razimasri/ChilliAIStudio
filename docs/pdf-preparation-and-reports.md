@@ -2,7 +2,7 @@
 
 On devices reporting at least 4 GB RAM, with a native page no larger than
 192 MiB in RGBA, setup begins preparing the first page after a short idle delay.
-It uses the existing 600-DPI PDF renderer and one-page compressed cache. Both
+It uses the shared resolution-aware PDF renderer and one-page compressed cache. Verified image-only scans at 300–600 DPI prepare near native resolution; other inputs retain 600-DPI preparation. Both
 calibration and marking reuse that raster; upload metadata loading itself still
 rasterizes no pages. Changing/removing files cancels the old warmup.
 

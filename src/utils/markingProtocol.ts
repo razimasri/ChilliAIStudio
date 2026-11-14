@@ -1,3 +1,4 @@
+import type { AlignmentOptions } from './omrEngine';
 import type {
   CalibrationParams,
   StudentResult,
@@ -11,6 +12,7 @@ export type MarkingRequest =
       index: number;
       params: CalibrationParams;
       geometry?: MarkingGeometryOptions;
+      alignment?: AlignmentOptions;
     }
   | { type: "annotate"; student: StudentResult; params: CalibrationParams };
 export interface PackedStudent {

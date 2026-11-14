@@ -143,7 +143,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
           if (controller.signal.aborted) return;
         }
         controller.signal.throwIfAborted();
-        setPreparation('Preparing the 600-DPI detail view in the background…');
+        setPreparation('Preparing the detail view in the background…');
         const raster = await getExamPage(
           firstFile,
           undefined,
