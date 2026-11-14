@@ -121,3 +121,14 @@ html { scrollbar-gutter: stable; }
   .mobile-selection-guide .guide-motion { display: none; }
   .mobile-selection-guide .guide-static { display: block; }
 }
+
+/* Sheet navigation stays outside the image's scroll area. */
+.sheet-edge-nav { opacity: 0; transition: opacity 120ms ease; }
+.sheet-viewer:hover .sheet-edge-nav, .sheet-edge-nav:focus-visible { opacity: 1; }
+.sheet-edge-nav:disabled { visibility: hidden; pointer-events: none; }
+@media (hover: none), (pointer: coarse) {
+  .sheet-edge-nav { opacity: 0.85; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet-edge-nav { transition: none; }
+}

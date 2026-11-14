@@ -176,14 +176,11 @@ try {
     .getByRole('tab', { name: 'Annotated Marked Sheets', exact: true })
     .click();
   const image = results.getByRole('img', { name: /Annotated sheet for/ });
-  const selector = results.getByRole('heading', {
-    name: 'Select student',
-    exact: true,
-  });
+  const selector = results.getByText('Student:', {exact: true});
   assert.ok(
     (await image.boundingBox()).x + (await image.boundingBox()).width <=
       (await selector.boundingBox()).x,
-    'Marked sheet must be left of student controls',
+    'Marked sheet must be left of the student summary',
   );
   const fitted = await image.boundingBox();
   assert.ok(

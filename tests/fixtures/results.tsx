@@ -17,6 +17,19 @@ const students: StudentResult[] = [
   annotatedDataUrl:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
   originalDataUrl:'',hasAmbiguity:false,incomplete:[],
 }));
+if (new URLSearchParams(location.search).has('portrait')) {
+  for (const student of students) {
+    const canvas = document.createElement('canvas'); canvas.width = 800; canvas.height = 1140;
+    const ctx = canvas.getContext('2d')!; ctx.fillStyle = 'white'; ctx.fillRect(0, 0, 800, 1140);
+    ctx.fillStyle = 'black'; ctx.font = 'bold 32px sans-serif'; ctx.fillText(student.name, 50, 80);
+    ctx.font = '24px sans-serif'; ctx.fillText(`Score ${student.score}/${student.total}`, 50, 125);
+    for (let row = 0; row < 20; row++) {
+      ctx.fillText(String(row + 1), 65, 220 + row * 40);
+      for (let col = 0; col < 4; col++) ctx.strokeRect(140 + col * 100, 195 + row * 40, 65, 30);
+    }
+    student.annotatedDataUrl = canvas.toDataURL();
+  }
+}
 const pendingMode = new URLSearchParams(location.search).has('pending');
 if (pendingMode) {
   students[0].annotationPending = true;
