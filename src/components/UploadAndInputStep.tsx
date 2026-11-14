@@ -2,7 +2,7 @@ import { PagePreview } from './PagePreview';
 import { Dialog } from './Dialog';
 import { APP_VERSION, RELEASE_NAME } from '../utils/release';
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { Upload, Trash2, Eye, RotateCw, Camera } from 'lucide-react';
+import { Upload, Trash2, Eye, RotateCw, Camera, ChevronDown } from 'lucide-react';
 import { ExamFile, CalibrationParams, MarkingConcurrency } from '../types';
 import {
   loadExamFile,
@@ -55,6 +55,7 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
   const [cameraFile, setCameraFile] = useState<File | null>(null);
   const [autoStart, setAutoStart] = useState(false);
   const [batchScanning, setBatchScanning] = useState(false);
+  const [scansExpanded, setScansExpanded] = useState(false);
   const confirmCameraScan = async (file: File, signal: AbortSignal) => {
     const loaded = await loadExamFile(file);
     if (signal.aborted) { releaseUnusedSources(loaded, []); signal.throwIfAborted(); }
@@ -287,6 +288,7 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
     const addedPages = files.some(file => !previousPageIds.current.has(file.id));
     previousPageIds.current = new Set(files.map(file => file.id));
     if (addedPages) {
+      setScansExpanded(false);
       pagesRef.current?.scrollIntoView({ block: 'start' });
       pagesRef.current?.focus({ preventScroll: true });
     }
@@ -476,6 +478,18 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
               </div>
             </div>
           )}
+          <div className="space-y-3">
+            {files.length > 0 && <button
+              type="button"
+              className="btn btn-secondary w-full justify-between"
+              aria-expanded={scansExpanded}
+              aria-controls="scan-source-panel"
+              onClick={() => setScansExpanded(value => !value)}
+            >
+              Add or replace scans
+              <ChevronDown aria-hidden="true" className={`w-4 h-4 ${scansExpanded ? 'rotate-180' : ''}`} />
+            </button>}
+            <div id="scan-source-panel" hidden={files.length > 0 && !scansExpanded}>
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -547,6 +561,8 @@ export const UploadAndInputStep: React.FC<UploadAndInputStepProps> = ({
               <p className={`text-xs text-[#b1a1a4] ${files.length ? 'text-left md:text-right max-w-sm' : 'text-center max-w-md'}`}>
                 Use the rear camera or choose a photo. If camera access is unavailable, use Choose files. Keep the full page visible on a contrasting surface.
               </p>
+            </div>
+          </div>
             </div>
           </div>
         </section>
