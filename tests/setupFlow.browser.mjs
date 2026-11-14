@@ -20,7 +20,10 @@ try {
     await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='Exam pages');
     await page.getByRole('button',{name:'Preview page 1',exact:true}).waitFor();
     const preview=await page.getByRole('button',{name:'Preview page 1',exact:true}).boundingBox();
-    const add=await page.getByRole('button',{name:'Add files',exact:true}).boundingBox();
+    const toggle=page.getByRole('button',{name:'Add or replace scans',exact:true});
+    assert.equal(await toggle.getAttribute('aria-expanded'),'false','Source panel collapses after loading');
+    assert.equal(await page.getByRole('button',{name:'Camera Scan',exact:true}).count(),0,'Camera controls stay out of the way');
+    const add=await toggle.boundingBox();
     assert.ok(preview.y<add.y,'Loaded previews must appear above Add files');
     const domOrder=await pages.evaluate(el=>{
       const preview=el.querySelector('[aria-label="Preview page 1"]');
@@ -39,9 +42,16 @@ try {
     assert.equal(await page.getByRole('button',{name:'Preview page 1',exact:true}).evaluate(el=>el===document.activeElement),true);
     await page.getByRole('button',{name:'Rotate page 1 90 degrees',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'Rotate page 1 90 degrees',exact:true}).evaluate(el=>el===document.activeElement),true,'Rotation must not move focus to the section');
+    await toggle.click();
+    assert.equal(await page.getByRole('button',{name:'Add files',exact:true}).isVisible(),true);
+    assert.equal(await page.getByRole('button',{name:'Auto Scan',exact:true}).isVisible(),true);
     await page.getByLabel('Exam scan files',{exact:true}).setInputFiles({...file,name:'second-scan.png'});
     await page.getByRole('button',{name:'Preview page 2',exact:true}).waitFor();
     await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='Exam pages');
+    await page.waitForFunction(()=>document.querySelector('[aria-controls="scan-source-panel"]')?.getAttribute('aria-expanded')==='false');
+    await page.getByRole('button',{name:'Clear pages & names',exact:true}).click();
+    await page.getByRole('button',{name:'Choose files',exact:true}).waitFor();
+    assert.equal(await toggle.count(),0,'Empty setup exposes sources without another click');
     await page.screenshot({path:`/workspace/work/benchmark-results/ui/setup-${viewport.width}.png`});
     await page.close();
   }
