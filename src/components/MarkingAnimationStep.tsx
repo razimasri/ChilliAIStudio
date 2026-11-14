@@ -28,7 +28,7 @@ export const MarkingAnimationStep: React.FC<MarkingAnimationStepProps> = ({
       {/* Animated Chilli Header */}
       <div className="relative inline-flex items-center justify-center">
         <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-[#8c1529] to-[#571622] flex items-center justify-center shadow-2xl shadow-[#8c1529]/40 border-2 border-[#b1a1a4]/30 animate-pulse">
-          <img src="/icons/Icon128.png" alt="ChilliMark logo" className="w-16 h-16 rounded-xl bg-white p-1 object-contain" />
+          <img src="/icons/printmark.png" alt="ChilliMark logo" className="w-16 h-16 rounded-xl bg-white p-1 object-contain" />
         </div>
         <div className="absolute -bottom-2 px-3 py-0.5 rounded-full bg-[#18090b] border border-[#8c1529] text-[10px] uppercase font-bold text-[#f3b0ba]">
           ChilliMark Engine
