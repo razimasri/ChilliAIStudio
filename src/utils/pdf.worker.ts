@@ -1,4 +1,5 @@
 import { PDFDocument } from 'pdf-lib';
+import { pdfPageJpeg } from './pdfPageImage';
 import { appendPdfReport } from './pdfReport';
 import {APP_VERSION,RELEASE_NAME} from './release';
 import type { PdfReport } from './exportPdf';
@@ -13,12 +14,13 @@ self.onmessage = async ({ data: report }: MessageEvent<PdfReport>) => {
     for (const [index, student] of report.students.entries()) {
       const response = await fetch(student.annotatedDataUrl);
       if (!response.ok) throw new Error(`Could not read marked sheet for ${student.name}`);
-      const image = await pdf.embedPng(await response.arrayBuffer());
+      const jpeg = await pdfPageJpeg(await response.blob());
+      const image = await pdf.embedJpg(await jpeg.arrayBuffer());
       const [width, height] = image.width > image.height ? [841.89, 595.28] : [595.28, 841.89];
       const page = pdf.addPage([width, height]);
       const size = image.scale(Math.min(width / image.width, height / image.height));
       page.drawImage(image, { x: (width-size.width)/2, y: (height-size.height)/2, ...size });
-      // Release decoded RGB/alpha buffers before opening the next high-resolution sheet.
+      // Flush each compressed page before opening the next high-resolution sheet.
       await pdf.flush();
       self.postMessage({ percent: Math.round((index + 1) / Math.max(1, report.students.length) * 85) });
     }
