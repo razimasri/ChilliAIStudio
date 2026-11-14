@@ -603,8 +603,9 @@ try {
   const confirmEmptyTail = async student => {
     for (let number = 3; number <= 12; number++) {
       await review.getByRole('heading', { name: `Student ${student} · Question ${number}`, exact: true }).waitFor({ timeout: 120000 });
-      await review.getByText(/No mark was detected for this question/).waitFor();
-      await review.getByRole('button', { name: 'Blank (no mark)', exact: true }).click();
+      const blank = review.getByRole('button', { name: 'Blank (no mark)', exact: true });
+      await review.getByText(await blank.getAttribute('aria-pressed') === 'true' ? /Answer saved/ : /No mark detected/).waitFor();
+      await blank.click();
     }
   };
   await confirmEmptyTail('01');

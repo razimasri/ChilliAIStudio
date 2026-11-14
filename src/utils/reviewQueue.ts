@@ -36,6 +36,13 @@ export function reviewItem(
       width: edges[index + 1] - edges[index],
     }));
   }
+  const detected = question.boxes.filter(box => box.bool);
+  const counts = detected.map(box => box.inkCount ?? NaN);
+  // Presentation hint only: weaker mark must be at least 90% of the stronger.
+  const similarPair = counts.length === 2 && counts.every(count => Number.isFinite(count) && count > 0) &&
+    Math.min(...counts) * 10 >= Math.max(...counts) * 9;
+  const suggestedResponse = question.reviewReason === 'no-mark' ? 'Blank' :
+    question.reviewReason === 'multiple-marks' && similarPair ? 'Unclear' : undefined;
   return {
     studentIndex: student.index,
     studentName: student.name,
@@ -46,9 +53,8 @@ export function reviewItem(
       student.annotatedDataUrl,
     currentResponse: false,
     reviewReason: question.reviewReason,
-    detectedLetters: question.boxes
-      .filter((box) => box.bool)
-      .map((box) => box.letter),
+    suggestedResponse,
+    detectedLetters: detected.map(box => box.letter),
     choicesCount: Math.max(params.choices || 4, boxes.length),
     answerRegions,
   };

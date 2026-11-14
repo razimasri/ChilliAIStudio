@@ -23,6 +23,13 @@ try{
   const noKey={questions:[make(0)],incomplete:[]};
   e.find_responses(cv,noKey,image,{...params,key:undefined});
   check(noKey.questions[0].response==='Blank'&&!noKey.incomplete.length,'missing key must not introduce review');
+  check(student.questions.every(q=>q.boxes.every(box=>box.inkCount===0)),'blank ink counts must be retained');
+  cv.rectangle(image,new cv.Point(20,20),new cv.Point(29,29),new cv.Scalar(0,0,0,255),-1);
+  cv.rectangle(image,new cv.Point(60,20),new cv.Point(68,29),new cv.Scalar(0,0,0,255),-1);
+  const pair={questions:[make(0)],incomplete:[]};
+  e.find_responses(cv,pair,image,params);
+  check(pair.questions[0].boxes[0].inkCount===100&&pair.questions[0].boxes[1].inkCount===90,'retain actual countNonZero values');
+  check(reviewItem({index:0,name:'Test',annotatedDataUrl:''},pair.questions[0],{...params,x1:0,choices:4}).suggestedResponse==='Unclear','native 10% pair must yield a hint');
   image.delete();
   check(student.incomplete.length===3,'only keyed blanks enter review');
   check(student.questions.slice(0,3).every(q=>q.response===false&&q.reviewReason==='no-mark'),'missing mark must remain unresolved');

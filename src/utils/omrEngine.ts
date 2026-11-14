@@ -1219,6 +1219,7 @@ export function find_responses(
     let filled = 0;
 
     for (const box of question.boxes) {
+      box.inkCount = 0;
       if (!box.xy || isNaN(box.xy[0]) || isNaN(box.xy[1])) {
         continue;
       }
@@ -1244,6 +1245,7 @@ export function find_responses(
       if (rw > 0 && rh > 0) {
         const temp = thresh.roi(new cv.Rect(rx, ry, rw, rh));
         const count = cv.countNonZero(temp);
+        box.inkCount = count;
         temp.delete();
 
         if (count > params.fill_limit) {
