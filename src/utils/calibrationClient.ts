@@ -10,7 +10,7 @@ export interface MeasuredCalibration {
   box: ReturnType<typeof measureSelectedBox>;
 }
 type Area = { x1: number; y1: number; x2: number; y2: number };
-type Request = { input?: Blob; params?: CalibrationParams; area?: Area };
+type Request = { mode?: 'contour' | 'page'; input?: Blob; params?: CalibrationParams; area?: Area };
 /** One runtime and one aligned Mat per calibration screen, never per exam page. */
 export class CalibrationClient {
   private worker?: Worker;
@@ -100,13 +100,14 @@ export class CalibrationClient {
     input: Blob,
     signal: AbortSignal,
     progress: (message: string) => void,
+    mode: 'contour' | 'page' = 'contour',
   ): Promise<PreparedCalibration> {
     if (this.pending)
       throw new Error('Calibration is already processing a selection.');
     this.cached = false;
     this.alignedInput = undefined;
     const result = await this.request<PreparedCalibration>(
-      { input },
+      { input, mode },
       signal,
       progress,
     );

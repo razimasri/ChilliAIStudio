@@ -31,4 +31,4 @@ export type MarkingReply =
   | { type: "progress"; message: string }
   | { type: "marked"; result: PackedStudent }
   | { type: "annotated"; image: Blob }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: "alignment" };

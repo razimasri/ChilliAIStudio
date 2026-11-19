@@ -1,6 +1,7 @@
+import { AlignmentError, type AlignmentRecovery, type ManualPageAlignment } from './manualAlignment';
 import { preserveManualResponses } from "./grading";
 import { geometryConsensus } from "./geometryConsensus";
-import type { CalibrationParams, ExamFile, StudentResult } from "../types";
+import type { CalibrationParams, ExamFile, StudentResult, MarkingGeometryOptions } from "../types";
 import { getMarkingPage } from "./pdfProcessor";
 import { PageLookahead } from "./pageLookahead";
 import { releaseResultImages } from "./imageStore";
@@ -39,6 +40,7 @@ export async function markBatch(
     result: StudentResult,
     previous?: StudentResult,
   ) => StudentResult | void,
+  onAlignmentRequired?: AlignmentRecovery,
 ): Promise<StudentResult[]> {
   signal.throwIfAborted();
   if (!files.length) return [];
@@ -81,6 +83,30 @@ export async function markBatch(
     while (clients.length > target) clients.pop()!.dispose();
   };
   try {
+    const manualAlignments = new Map<number, ManualPageAlignment>();
+    const markPage = async (
+      client: MarkingClient, raster: Awaited<ReturnType<typeof getMarkingPage>>,
+      name: string, index: number, report: (message: string) => void,
+      geometry?: MarkingGeometryOptions,
+    ): Promise<StudentResult> => {
+      if (!raster.bitmap) throw new Error('Could not prepare native page pixels.');
+      try {
+        return await client.mark(raster.bitmap, name, index, params, report, geometry,
+          { ...raster.alignment, manual: manualAlignments.get(index) });
+      } catch (error) {
+        if (!(error instanceof AlignmentError) || !onAlignmentRequired) throw error;
+        report('Waiting for manual alignment…');
+        const manual = await onAlignmentRequired({ index, name, message: error.message }, controller.signal);
+        controller.signal.throwIfAborted();
+        manualAlignments.set(index, manual);
+        // Transferred worker bitmaps are consumed; obtain a fresh native raster for this page only.
+        const retry = await getMarkingPage(files[index], controller.signal);
+        try {
+          if (!retry.bitmap) throw new Error('Could not prepare page for manual alignment.');
+          return await client.mark(retry.bitmap, name, index, params, report, geometry, { ...retry.alignment, manual });
+        } finally { retry.release(); }
+      }
+    };
     const run = async (end: number) => {
       jobs.length = 0;
       for (const client of clients)
@@ -115,16 +141,14 @@ export async function markBatch(
                   controller.signal.throwIfAborted();
                   if (!raster.bitmap)
                     throw new Error("Could not prepare native page pixels.");
-                  result = await client.mark(
-                    raster.bitmap,
+                  result = await markPage(
+                    client, raster,
                     name,
                     index,
-                    params,
                     report,
                     index === 0 && !params.columnLayout
                       ? { learnColumnLayout: true }
                       : undefined,
-                    raster.alignment,
                   );
                 } finally {
                   raster.release();
@@ -235,11 +259,10 @@ export async function markBatch(
               controller.signal.throwIfAborted();
               if (!raster.bitmap)
                 throw new Error("Could not prepare native page pixels.");
-              result = await client.mark(
-                raster.bitmap,
+              result = await markPage(
+                client, raster,
                 previous.name,
                 index,
-                params,
                 report,
                 {
                   adjustments,
@@ -252,7 +275,6 @@ export async function markBatch(
                     ]),
                   ],
                 },
-                raster.alignment,
               );
             } finally {
               raster.release();

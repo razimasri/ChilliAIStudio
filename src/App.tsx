@@ -1,3 +1,5 @@
+import { ManualAlignmentDialog } from './components/ManualAlignmentDialog';
+import type { AlignmentRecoveryRequest, ManualPageAlignment } from './utils/manualAlignment';
 import { useEffect, useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { UploadAndInputStep } from './components/UploadAndInputStep';
@@ -93,6 +95,7 @@ export function App() {
   }>({ active: [], done: [] });
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [markingStatusText, setMarkingStatusText] = useState<string>('');
+  const [alignmentRequests, setAlignmentRequests] = useState<(AlignmentRecoveryRequest & { confirm: (value: ManualPageAlignment) => void })[]>([]);
   const [pageErrors, setPageErrors] = useState<string[]>([]);
   const [studentResults, setStudentResults] = useState<StudentResult[]>([]);
 
@@ -239,6 +242,23 @@ export function App() {
           syncReview(session);
           return result;
         },
+        (request, signal) => new Promise((resolve, reject) => {
+          const remove = () => setAlignmentRequests(items => items.filter(item => item !== entry));
+          const abort = () => {
+            signal.removeEventListener('abort', abort);
+            remove();
+            reject(new DOMException('Cancelled', 'AbortError'));
+          };
+          const entry = { ...request, confirm: (value: ManualPageAlignment) => {
+            signal.removeEventListener('abort', abort);
+            remove();
+            if (signal.aborted) reject(new DOMException('Cancelled', 'AbortError'));
+            else resolve(value);
+          }};
+          if (signal.aborted) { abort(); return; }
+          signal.addEventListener('abort', abort, { once: true });
+          setAlignmentRequests(items => [...items, entry]);
+        }),
       );
       controller.signal.throwIfAborted();
       if (sessionRef.current !== session) return;
@@ -378,6 +398,9 @@ export function App() {
       w: 0,
       h: 0,
       columnLayout: undefined,
+      alignmentMode: undefined,
+      alignmentReferencePreview: undefined,
+      templateDataUrl: undefined,
     }));
     setCurrentStep(1);
     setFiles([]);
@@ -392,6 +415,11 @@ export function App() {
     <div className="min-h-screen bg-[#18090b] text-[#f3e7e9] flex flex-col selection:bg-[#8c1529] selection:text-white">
       {/* Top Navigation */}
       <Header currentStep={currentStep} onShowHelp={() => setShowHelp(true)} />
+      {currentStep === 3 && alignmentRequests[0] && <ManualAlignmentDialog
+        key={alignmentRequests[0].index} file={files[alignmentRequests[0].index]}
+        params={sessionRef.current?.params ?? params} request={alignmentRequests[0]}
+        onConfirm={alignmentRequests[0].confirm} onCancel={cancelSession}
+      />}
 
       {/* Main Content Area */}
       <main className="flex-1">
@@ -466,6 +494,7 @@ export function App() {
       </main>
 
       {currentStep === 3 &&
+        alignmentRequests.length === 0 &&
         ambiguityQueue.length > 0 &&
         !ambiguityQueue[currentAmbiguityIdx] && (
           <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[#571622] bg-[#240c10] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] flex flex-wrap justify-center items-center gap-3">
@@ -496,7 +525,7 @@ export function App() {
             )}
           </div>
         )}
-      {currentStep === 3 && ambiguityQueue[currentAmbiguityIdx] && (
+      {currentStep === 3 && !alignmentRequests.length && ambiguityQueue[currentAmbiguityIdx] && (
         <AmbiguityModal
           item={ambiguityQueue[currentAmbiguityIdx]}
           fullPageDataUrl={(() => {

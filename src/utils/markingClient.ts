@@ -1,3 +1,4 @@
+import { AlignmentError } from './manualAlignment';
 import type { AlignmentOptions } from './omrEngine';
 import type { MarkingGeometryOptions, CalibrationParams, StudentResult } from "../types";
 import type {
@@ -58,7 +59,7 @@ export class MarkingClient {
         return;
       }
       this.pending = undefined;
-      if (reply.type === "error") pending.reject(new Error(reply.message));
+      if (reply.type === "error") pending.reject(reply.code === "alignment" ? new AlignmentError(reply.message) : new Error(reply.message));
       else pending.resolve(reply);
     };
     this.worker.onerror = (event) =>

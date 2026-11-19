@@ -59,6 +59,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
     rect: [number, number, number, number];
     angle: number;
     thumbnailImage: HTMLImageElement;
+    previewBlob: Blob;
   } | null>(null);
 
   // Calibration stages:
@@ -100,6 +101,8 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
   const [qAreaImage, setQAreaImage] = useState<HTMLCanvasElement | null>(null);
 
   const [templateError, setTemplateError] = useState<string | null>(null);
+  const [showAlignmentSettings, setShowAlignmentSettings] = useState(false);
+  useEffect(() => { if (templateError) setShowAlignmentSettings(true); }, [templateError]);
 
   // Show the small raster before starting native rasterization/alignment.
   useEffect(() => {
@@ -159,6 +162,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
             await response.blob(),
             controller.signal,
             setPreparation,
+            params.alignmentMode,
           );
         } finally {
           raster.release();
@@ -175,6 +179,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
           rect: result.rect,
           angle: result.angle,
           thumbnailImage,
+          previewBlob: result.thumbnail,
         });
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -199,7 +204,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       releasePreview?.();
       owned.forEach(releaseImage);
     };
-  }, [firstFile.id, firstFile.rotation, firstFile.dataUrl]);
+  }, [firstFile.id, firstFile.rotation, firstFile.dataUrl, params.alignmentMode]);
 
   // A preview selection is in the unaligned template frame. Upgrade it using
   // the authoritative full-resolution transform, never a low-res contour fit.
@@ -216,6 +221,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
       ...area,
       questionAreaFrame: 'aligned',
       rect: prepared.rect,
+      alignmentReferencePreview: prepared.previewBlob,
       templateDataUrl: prepared.image,
     });
     if (sampleSelection?.frame === 'preview')
@@ -667,7 +673,7 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
         ) : templateError ? (
           <div role="alert" className="p-8 text-rose-300">
             Could not prepare this page: {templateError} Go back and check the
-            scan orientation and resolution.
+            scan orientation and resolution, or choose Whole page if this sheet has no large printed contour.
           </div>
         ) : (
           <div className="min-h-full min-w-full w-max p-2 lg:p-4 flex">
@@ -759,7 +765,23 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                 ? 'Select question area'
                 : 'Select one empty box'}
             </h2>
-            <span className="lg:hidden text-xs text-[#b1a1a4]" aria-label={`Calibration step ${step === 'qArea' ? 1 : 2} of 2`}>{step === 'qArea' ? '1 / 2' : '2 / 2'}</span>
+            <details className="relative text-sm lg:w-full" open={showAlignmentSettings} onToggle={event => setShowAlignmentSettings(event.currentTarget.open)}>
+              <summary aria-label="Alignment settings" className="cursor-pointer min-h-11 flex items-center px-2 lg:px-0"><span className="lg:hidden" aria-hidden="true">{params.alignmentMode === 'page' ? 'Page' : '⚙'}</span><span className="hidden lg:inline">Alignment: {params.alignmentMode === 'page' ? 'whole page' : 'printed contour'}</span></summary>
+            <label className="absolute right-0 top-full z-40 w-[min(20rem,calc(100vw-2rem))] p-3 bg-[#240c10] border border-[#571622] shadow-xl rounded-xl text-sm flex flex-col gap-1 lg:static lg:w-auto lg:border-0 lg:p-0 lg:shadow-none">
+              Alignment reference
+              <select aria-label="Alignment reference" className="rounded-lg border border-[#571622] bg-[#19090c] p-2" value={params.alignmentMode || 'contour'}
+                onChange={event => {
+                  setStep('qArea');
+                  setShowAlignmentSettings(false);
+                  onParamsChange({ ...params, alignmentMode: event.target.value as 'contour' | 'page', x1:0,y1:0,x2:0,y2:0,w:0,h:0,columnLayout:undefined,questionAreaFrame:'preview' });
+                }}>
+                <option value="contour">Large printed contour</option>
+                <option value="page">Whole page — no alignment contour</option>
+              </select>
+              {params.alignmentMode === 'page' && <span className="text-xs text-[#b1a1a4]">Use full, upright pages with similar framing. No large printed rectangle is required.</span>}
+            </label>
+            </details>
+
             <p
               className="hidden lg:block text-sm text-[#b1a1a4] truncate"
               title={firstFile.name}
