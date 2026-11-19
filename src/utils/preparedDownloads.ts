@@ -1,11 +1,12 @@
 import type { StudentResult, QuestionStat } from "../types";
-import { exportAnnotatedPdf } from "./exportPdf";
+import { prepareAnnotatedPdf } from "./exportPdf";
 import { exportArchive, type ArchiveEntry } from "./exportArchive";
 import { exportStudentScoresCsv, exportQuestionStatsCsv } from "./omrEngine";
 
 /** One PDF job followed by one ZIP job. Buttons share and retain the same promises. */
 export class PreparedDownloads {
   readonly controller = new AbortController();
+  private sheets?: Blob[];
   private pdfJob?: Promise<Blob>;
   private zipJob?: Promise<Blob>;
   onProgress?: (stage: "pdf" | "zip", percent: number) => void;
@@ -20,7 +21,7 @@ export class PreparedDownloads {
     if (!this.pdfJob) {
       const promise = this.prepareSheets().then(() => {
         this.controller.signal.throwIfAborted();
-        return exportAnnotatedPdf(
+        return prepareAnnotatedPdf(
         {
           students: this.students.map(
             ({
@@ -45,9 +46,12 @@ export class PreparedDownloads {
         (percent) => this.onProgress?.("pdf", percent),
         this.controller.signal,
       );
-      }).then((blob) => {
+      }).then(({ pdf, sheets }) => {
+        this.controller.signal.throwIfAborted();
+        if (sheets.length !== this.students.length) throw new Error("Missing JPEG sheets from PDF export.");
+        this.sheets = sheets;
         this.onProgress?.("pdf", 100);
-        return blob;
+        return pdf;
       });
       this.pdfJob = promise;
       void promise.catch(() => {
@@ -77,12 +81,9 @@ export class PreparedDownloads {
       { name: folder + "ChilliMark_Annotated_Report.pdf", data: pdf },
     ];
     for (const [index, student] of this.students.entries()) {
-      const response = await fetch(student.annotatedDataUrl, { signal });
-      if (!response.ok)
-        throw Error(`Could not read marked sheet for ${student.name}`);
       entries.push({
-        name: `${folder}${String(index + 1).padStart(2, "0")}_${student.name.replace(/\s+/g, "_")}_Score_${student.score}of${student.total}.png`,
-        data: await response.blob(),
+        name: `${folder}${String(index + 1).padStart(2, "0")}_${student.name.replace(/\s+/g, "_")}_Score_${student.score}of${student.total}.jpg`,
+        data: this.sheets![index],
       });
     }
     entries.push({
@@ -104,5 +105,6 @@ export class PreparedDownloads {
     this.onProgress = undefined;
     this.pdfJob = undefined;
     this.zipJob = undefined;
+    this.sheets = undefined;
   }
 }

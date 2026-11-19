@@ -9,3 +9,5 @@ A single-page comparison used the first embedded image from the user's 2025 refe
 JPEG is lossy; individual pixels can change slightly. Native resolution is retained, and tests check distinct annotation colours, white backgrounds and JPEG image dimensions/filter in the actual exported PDF. Lossless PNGs remain available when exact pixels are needed.
 
 Validation: `npm run build`, Results PDF/ZIP integration, prepared-download sharing/cancellation, and `CHROMIUM_PATH=/usr/bin/chromium node tests/pdfCompression.browser.mjs`. Set `PDF_EXPORT_REFERENCE_JPEG` to a local JPEG to run the comparison with a real scanned page instead of the generated paper-texture fixture.
+
+Download All now includes `.jpg` student sheets as well as the PDF and CSV reports. These are the same native-resolution, quality-0.90 JPEG blobs already encoded for the PDF, reused without another decode/encode pass. The individual Download Sheet (PNG) option remains lossless. This avoids duplicating large, noisy phone photographs as PNGs inside the archive; ZIP compression alone cannot substantially shrink an already compressed PNG.

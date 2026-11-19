@@ -1,3 +1,4 @@
+import { whitenPaper } from './lighting';
 import { scenePixels, uprightPage } from './autoCapture';
 import type { SceneFrame } from './autoCapture';
 import { getCV } from '../cvLoader';
@@ -158,6 +159,7 @@ export class CameraProcessor {
       else if (sharpness < 35) warnings.push('The page may be soft. Check the answer boxes carefully before continuing.');
       if (corners.some(p => p.x < .008 || p.y < .008 || p.x > .992 || p.y > .992))
         warnings.push('The page is close to the photograph edge. Confirm no part of the sheet is missing.');
+      whitenPaper(cv, corrected);
       return { preview: await this.encode(corrected), corners, rotation, warnings, error };
     } finally { corrected.delete(); gray.delete(); lap.delete(); mean.delete(); std.delete(); }
   }
@@ -178,9 +180,9 @@ export class CameraProcessor {
       if (prepared.error) throw new Error(prepared.error);
       const full = this.warp(prepared.corners, prepared.rotation);
       let image: Blob;
-      try { image = await this.encode(full); } finally { full.delete(); }
+      try { whitenPaper(this.cv, full); image = await this.encode(full); } finally { full.delete(); }
       const small = this.warp(prepared.corners, prepared.rotation, 240);
-      try { return { image, thumbnail: await this.encode(small), warnings: prepared.warnings }; }
+      try { whitenPaper(this.cv, small); return { image, thumbnail: await this.encode(small), warnings: prepared.warnings }; }
       finally { small.delete(); }
     } finally { this.dispose(); }
   }
@@ -189,6 +191,6 @@ export class CameraProcessor {
     const preview = await this.preview(corners, rotation);
     if (preview.error) throw new Error(preview.error);
     const corrected = this.warp(corners, rotation);
-    try { return await this.encode(corrected); } finally { corrected.delete(); }
+    try { whitenPaper(this.cv, corrected); return await this.encode(corrected); } finally { corrected.delete(); }
   }
 }

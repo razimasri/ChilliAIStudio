@@ -14,7 +14,8 @@ try {
   await page.goto(server.resolvedUrls.local[0] + 'tests/fixtures/camera.html');
   await page.waitForFunction(() => window.cameraFixture);
   const qualityOnly = Boolean(process.env.CAMERA_QUALITY_ONLY);
-  const report = await page.evaluate(async ({ qualityOnly }) => {
+  const shadowOnly = Boolean(process.env.CAMERA_SHADOW_ONLY);
+  const report = await page.evaluate(async ({ qualityOnly, shadowOnly }) => {
     const { e, setup, getCV, getExamPage, loadExamFile, releaseUnusedSources, CameraClient, CameraProcessor, drawMat, releaseResultImages } = window.cameraFixture;
     const cv = await getCV(), reports = [];
     const check = (condition, message) => { if (!condition) throw Error(message); };
@@ -25,7 +26,7 @@ try {
       const baseline = await e.processStudentScan(cv, lease.url, 'Camera test', 0, params);
       check(baseline.responses.length === Object.keys(params.key).length, 'flatbed baseline lost questions');
       const original = await e.renderScanMat(cv, lease.url); lease.release();
-      for (const variant of name === 'IBSample' ? ['overhead','oblique','rotated','lighting'] : ['overhead','oblique']) {
+      for (const variant of shadowOnly ? ['shadow'] : name === 'IBSample' ? ['overhead','oblique','rotated','lighting','shadow'] : ['overhead','oblique','shadow']) {
         const width = 3500, height = 4800;
         let photo = new cv.Mat();
         const points = variant === 'overhead' ? [240,180,3260,180,3260,4620,240,4620] : [410,180,3180,420,3290,4510,180,4610];
@@ -34,10 +35,10 @@ try {
         const matrix = cv.getPerspectiveTransform(source,destination);
         cv.warpPerspective(original,photo,matrix,new cv.Size(width,height),cv.INTER_LINEAR,cv.BORDER_CONSTANT,new cv.Scalar(45,55,65,255));
         source.delete(); destination.delete(); matrix.delete();
-        if (variant === 'lighting') {
+        if (variant === 'lighting' || variant === 'shadow') {
           const data = photo.data;
           for (let y=0; y<photo.rows; y++) for (let x=0; x<photo.cols; x++) {
-            const offset=(y*photo.cols+x)*4, gain=.68+.28*x/photo.cols;
+            const offset=(y*photo.cols+x)*4, gain=(.68+.28*x/photo.cols)*(variant === 'shadow' ? .5+.5/(1+Math.exp(-(x/photo.cols-.48)*45)) : 1);
             for(let c=0;c<3;c++) data[offset+c]=Math.round(data[offset+c]*gain);
           }
         }
@@ -120,7 +121,7 @@ try {
     } finally { exifClient.dispose(); }
     console.log('camera: blank, clipped, low-resolution, blurry, crossed-corner and EXIF orientation checks passed');
     return reports;
-  }, { qualityOnly });
-  assert.equal(report.length,qualityOnly ? 0 : 6);
+  }, { qualityOnly, shadowOnly });
+  assert.equal(report.length,qualityOnly ? 0 : shadowOnly ? 2 : 8);
   console.log(qualityOnly ? 'Camera capture-quality checks passed.' : 'Camera correction and marking parity passed: ' + JSON.stringify(report));
 } finally { await browser.close(); await server.close(); }

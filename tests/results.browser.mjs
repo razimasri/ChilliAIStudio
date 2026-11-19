@@ -67,6 +67,13 @@ try {
   const reportFile=Object.keys(zip.files).find(p=>p.endsWith('Class_Scores_Summary.csv'));
   assert.equal(await zip.file(reportFile).async('string'),reportText);
   assert.ok(Object.keys(zip.files).some(p=>p.endsWith('Question_Statistics.csv')));
+  const jpegFiles=Object.keys(zip.files).filter(p=>p.endsWith('.jpg'));
+  assert.equal(jpegFiles.length,3,'Archive contains a JPEG for each marked sheet');
+  assert.equal(Object.keys(zip.files).filter(p=>p.endsWith('.png')).length,0,'Archive no longer duplicates lossless PNGs');
+  for (const filename of jpegFiles) {
+    const bytes=await zip.file(filename).async('nodebuffer');
+    assert.equal(bytes.subarray(0,3).toString('hex'),'ffd8ff','JPEG extension must match actual encoding');
+  }
   const pdfFile=Object.keys(zip.files).find(p=>p.endsWith('.pdf'));
   assert.deepEqual(await zip.file(pdfFile).async('nodebuffer'),pdfBytes,'Download All reuses the complete annotated report');
   assert.deepEqual(await page.evaluate(()=>window.exportWorkers),{pdf:1,zip:1,live:0,peak:1},'Download buttons reuse prepared files without starting workers');
