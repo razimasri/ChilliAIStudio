@@ -85,6 +85,8 @@ export interface AmbiguityResolutionItem {
 }
 
 export interface CalibrationParams {
+  alignmentMode?: 'contour' | 'page' | 'skip';
+  alignmentReferencePreview?: Blob;
   // Stored bounding rectangle of the calibration sheet's largest contour: [x, y, w, h]
   rect: [number, number, number, number];
   // Question Area coordinates on the canonical 4800x6840 page

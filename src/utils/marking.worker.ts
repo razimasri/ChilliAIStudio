@@ -1,3 +1,4 @@
+import { AlignmentError } from './manualAlignment';
 /// <reference lib="webworker" />
 import { getCV } from "./cvLoader";
 import {
@@ -90,7 +91,7 @@ self.onmessage = async (event: MessageEvent<MarkingRequest>) => {
       send({ type: "annotated", image: await (await fetch(url)).blob() });
     }
   } catch (error) {
-    send({ type: "error", message: decodeCVError(cv, error) });
+    send({ type: "error", message: decodeCVError(cv, error), code: error instanceof AlignmentError ? "alignment" : undefined });
   } finally {
     bitmap?.close();
     releaseAllImages();
