@@ -17,7 +17,7 @@ import {
 let alignedImage: any;
 self.onmessage = async (
   event: MessageEvent<{
-    mode?: 'contour' | 'page';
+    mode?: 'contour' | 'page' | 'skip';
     input?: Blob;
     params?: CalibrationParams;
     area?: { x1: number; y1: number; x2: number; y2: number };
@@ -62,7 +62,7 @@ self.onmessage = async (
     const raw = await renderToCanonicalMat(cv, imageUrl(event.data.input));
     let result: ReturnType<typeof rotation>;
     try {
-      result = rotation(cv, raw, { pageBoundary: event.data.mode === 'page' });
+      result = rotation(cv, raw, { pageBoundary: event.data.mode === 'page', skip: event.data.mode === 'skip' });
       rotated = result.rotated;
     } finally {
       raw.delete();

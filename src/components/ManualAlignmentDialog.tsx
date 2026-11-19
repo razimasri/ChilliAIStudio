@@ -112,9 +112,10 @@ export function ManualAlignmentDialog({file,params,request,onConfirm,onCancel}:{
           <canvas ref={reference} aria-label="First-page alignment reference" className={`${view==='reference'?'block':'hidden'} w-auto max-w-full max-h-[55dvh] mx-auto`}/>
         </section>
       </div>
-      <div className="sticky bottom-0 bg-[#240c10] pt-3 mt-2 flex justify-between gap-3">
+      <div className="sticky bottom-0 bg-[#240c10] pt-3 mt-2 grid grid-cols-2 sm:flex sm:justify-between gap-2">
         <button onClick={onCancel} className="rounded-xl border border-[#571622] px-4 py-3">Cancel marking</button>
-        <button disabled={!valid||!image} onClick={()=>{if(rect)onConfirm({angle,rect});}} className="rounded-xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 px-4 py-3 font-semibold">Use alignment and continue</button>
+        <button disabled={!image} onClick={()=>onConfirm({skip:true,angle:0,rect:[0,0,W,H]})} className="rounded-xl border border-[#571622] disabled:opacity-40 px-3 py-3">Skip alignment</button>
+        <button disabled={!valid||!image} onClick={()=>{if(rect)onConfirm({angle,rect});}} className="col-span-2 sm:ml-auto rounded-xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 px-4 py-3 font-semibold">Use alignment and continue</button>
       </div>
     </div>
   </div>;

@@ -766,18 +766,20 @@ export const CalibrationStep: React.FC<CalibrationStepProps> = ({
                 : 'Select one empty box'}
             </h2>
             <details className="relative text-sm lg:w-full" open={showAlignmentSettings} onToggle={event => setShowAlignmentSettings(event.currentTarget.open)}>
-              <summary aria-label="Alignment settings" className="cursor-pointer min-h-11 flex items-center px-2 lg:px-0"><span className="lg:hidden" aria-hidden="true">{params.alignmentMode === 'page' ? 'Page' : '⚙'}</span><span className="hidden lg:inline">Alignment: {params.alignmentMode === 'page' ? 'whole page' : 'printed contour'}</span></summary>
+              <summary aria-label="Alignment settings" className="cursor-pointer min-h-11 flex items-center px-2 lg:px-0"><span className="lg:hidden" aria-hidden="true">{params.alignmentMode === 'skip' ? 'Skip' : params.alignmentMode === 'page' ? 'Page' : '⚙'}</span><span className="hidden lg:inline">Alignment: {params.alignmentMode === 'skip' ? 'skipped' : params.alignmentMode === 'page' ? 'whole page' : 'printed contour'}</span></summary>
             <label className="absolute right-0 top-full z-40 w-[min(20rem,calc(100vw-2rem))] p-3 bg-[#240c10] border border-[#571622] shadow-xl rounded-xl text-sm flex flex-col gap-1 lg:static lg:w-auto lg:border-0 lg:p-0 lg:shadow-none">
               Alignment reference
               <select aria-label="Alignment reference" className="rounded-lg border border-[#571622] bg-[#19090c] p-2" value={params.alignmentMode || 'contour'}
                 onChange={event => {
                   setStep('qArea');
                   setShowAlignmentSettings(false);
-                  onParamsChange({ ...params, alignmentMode: event.target.value as 'contour' | 'page', x1:0,y1:0,x2:0,y2:0,w:0,h:0,columnLayout:undefined,questionAreaFrame:'preview' });
+                  onParamsChange({ ...params, alignmentMode: event.target.value as 'contour' | 'page' | 'skip', x1:0,y1:0,x2:0,y2:0,w:0,h:0,columnLayout:undefined,questionAreaFrame:'preview' });
                 }}>
                 <option value="contour">Large printed contour</option>
                 <option value="page">Whole page — no alignment contour</option>
+                <option value="skip">Skip alignment — keep current placement</option>
               </select>
+              {params.alignmentMode === 'skip' && <span className="text-xs text-[#b1a1a4]">Keep the current position and orientation. Only resize to the marking canvas.</span>}
               {params.alignmentMode === 'page' && <span className="text-xs text-[#b1a1a4]">Use full, upright pages with similar framing. No large printed rectangle is required.</span>}
             </label>
             </details>

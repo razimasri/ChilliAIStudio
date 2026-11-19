@@ -243,7 +243,7 @@ export function normaliseDeskewAngle(rawAngle: number): number {
 }
 
 /** Single-channel alignment is an opt-in experiment; SIMD colour is faster overall. */
-export interface AlignmentOptions { singleChannel?: boolean; sourceScale?: number; referenceRect?: AlignmentRect; manual?: ManualPageAlignment; pageBoundary?: boolean; }
+export interface AlignmentOptions { singleChannel?: boolean; sourceScale?: number; referenceRect?: AlignmentRect; manual?: ManualPageAlignment; pageBoundary?: boolean; skip?: boolean; }
 export function rotation(
   cv: any,
   inputPage: any,
@@ -260,6 +260,10 @@ export function rotation(
     const sourceScale = options.sourceScale ?? 1;
     if (!Number.isFinite(sourceScale) || sourceScale < 0.5 || sourceScale > 1)
       throw new Error('Unsupported alignment scale.');
+    if (options.skip || options.manual?.skip) {
+      page.copyTo(rotated);
+      return { image: rotated, rotated, angle: 0, singleChannel: false, rect: [0, 0, page.cols, page.rows] };
+    }
     if (options.manual || options.pageBoundary) {
       const manual = options.manual || { angle: 0, rect: [0, 0, TEMPLATE_WIDTH, TEMPLATE_HEIGHT] as AlignmentRect };
       validateManualAlignment(manual);
@@ -1530,7 +1534,7 @@ export async function processStudentScan(
   let rotated: any;
   let rect: [number, number, number, number];
   try {
-    ({ rotated, rect } = rotation(cv, pageMat, { ...alignment, pageBoundary: params.alignmentMode === 'page', referenceRect: params.rect }));
+    ({ rotated, rect } = rotation(cv, pageMat, { ...alignment, pageBoundary: params.alignmentMode === 'page', skip: alignment?.skip || params.alignmentMode === 'skip', referenceRect: params.rect }));
   } finally {
     pageMat.delete();
   }
@@ -1538,9 +1542,15 @@ export async function processStudentScan(
   onProgress?.('Scaling and registering page...');
   let scaledScan: any;
   try {
-    scaledScan = alignment?.manual
-      ? registerManualPage(cv, rotated, rect, params.rect)
-      : scale(cv, rotated, rect, params);
+    if (alignment?.skip || alignment?.manual?.skip || params.alignmentMode === 'skip') {
+      scaledScan = new cv.Mat();
+      try { cv.resize(rotated, scaledScan, new cv.Size(TEMPLATE_WIDTH, TEMPLATE_HEIGHT), 0, 0, cv.INTER_LINEAR); }
+      catch (error) { scaledScan.delete(); throw error; }
+    } else {
+      scaledScan = alignment?.manual
+        ? registerManualPage(cv, rotated, rect, params.rect)
+        : scale(cv, rotated, rect, params);
+    }
   } finally {
     rotated.delete();
   }

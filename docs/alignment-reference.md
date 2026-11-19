@@ -19,3 +19,10 @@ During marking, a page that fails alignment waits for teacher input while other 
 For sheets without a significant large printed contour, choose **Whole page — no alignment contour** in calibration. Both calibration and marking use the page bounds explicitly, with no contour detection or automatic deskew. This assumes full, upright pages with consistent framing (camera perspective correction is already performed before marking); it does not add support for a different answer-box shape or change answer interpretation. This is an explicit teacher choice, not a silent fallback.
 
 Validation: a real IBDP sample with its non-grid content removed has no qualifying large contour. Whole-page worker calibration and marking retain its 30 responses and score; an automatic attempt triggers typed recovery, obtains fresh page pixels and produces the same answers after a manual transform. Cancellation, the calibration-mode switch after a no-contour error, and mouse/touch rectangle selection are covered by the browser regression.
+
+
+## Skip alignment
+
+**Skip alignment — keep current placement** is an explicit calibration setting. It bypasses contour detection, deskew, reference matching, translation and cropping. Only the resize to the canonical marking canvas remains. The recovery dialog also has **Skip alignment** for just the failed page; that choice is retained for geometry re-reads and does not alter the rest of the batch. Per-page skipping ignores both the calibration rectangle and any tentative manual rotation/selection. Camera capture's earlier perspective correction and upload rotation are not undone. This option assumes the answer grid already occupies the calibrated position.
+
+The skip regression deliberately supplies a wrong reference rectangle and a nonzero tentative manual rotation: global and per-page skip still retain all 30 real-sample responses and the score. It also checks skip-mode calibration and the recovery button without requiring a drawn selection.

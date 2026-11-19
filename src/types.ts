@@ -85,7 +85,7 @@ export interface AmbiguityResolutionItem {
 }
 
 export interface CalibrationParams {
-  alignmentMode?: 'contour' | 'page';
+  alignmentMode?: 'contour' | 'page' | 'skip';
   alignmentReferencePreview?: Blob;
   // Stored bounding rectangle of the calibration sheet's largest contour: [x, y, w, h]
   rect: [number, number, number, number];

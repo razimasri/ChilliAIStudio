@@ -1,5 +1,6 @@
 import type { AlignmentRect } from './alignmentReference';
 export interface ManualPageAlignment {
+  skip?: boolean;
   angle: number;
   /** Rectangle in the rotated page, expressed in canonical 4800×6840 coordinates. */
   rect: AlignmentRect;
