@@ -1,3 +1,4 @@
+import { matchesAlignmentReference, type AlignmentRect } from './alignmentReference';
 import { isOpaqueMonochrome, warpMonochrome } from './monochromeAlignment';
 import { boundedContourMask, translateContour } from './contourMasks';
 import {
@@ -150,7 +151,7 @@ export function get_thresh(cv: any, image: any, blur = true): any {
  *   largest = cv2.approxPolyDP(largest, 0.01 * cv2.arcLength(largest, True), True)
  *   return largest
  */
-export function largest_cnt(cv: any, image: any, sourceScale = 1): any {
+export function largest_cnt(cv: any, image: any, sourceScale = 1, reference?: AlignmentRect): any {
   // The 200px border and 4,000,000px bounding-area cutoff are defined at
   // 600-DPI reference resolution. A verified native-PDF scale changes only
   // these alignment supports; box detection still runs on the canonical canvas.
@@ -179,7 +180,21 @@ export function largest_cnt(cv: any, image: any, sourceScale = 1): any {
       const contour = cnts.get(i);
       const boundingArea = area(cv, contour);
       if (boundingArea > maxArea) {
-        if (largest) largest.delete();
+        if (reference) {
+          // Compare the same approximated rectangle that registration will use.
+          const approx = new cv.Mat();
+          let matches: boolean;
+          try {
+            cv.approxPolyDP(contour, approx, 0.01 * cv.arcLength(contour, true), true);
+            const box = cv.boundingRect(approx);
+            matches = matchesAlignmentReference(
+              [box.x, box.y, box.width, box.height], reference, image.cols, image.rows,
+            );
+          } catch (error) { contour.delete(); throw error; }
+          finally { approx.delete(); }
+          if (!matches) { contour.delete(); continue; }
+        }
+        largest?.delete();
         largest = contour;
         maxArea = boundingArea;
       } else {
@@ -187,6 +202,7 @@ export function largest_cnt(cv: any, image: any, sourceScale = 1): any {
       }
     }
     if (!largest) {
+      if (reference) throw new Error('Page alignment does not match the first page: no large contour has width and height within 10% and a centre within 10% of the page dimensions. Check the scan, orientation and first-page setup. This page has not been rescaled or marked.');
       throw new Error(`No alignment rectangle larger than ${Math.round(minimumArea).toLocaleString('en-US')} pixels found. Check scan resolution and orientation.`);
     }
     const approx = new cv.Mat();
@@ -225,7 +241,7 @@ export function normaliseDeskewAngle(rawAngle: number): number {
 }
 
 /** Single-channel alignment is an opt-in experiment; SIMD colour is faster overall. */
-export interface AlignmentOptions { singleChannel?: boolean; sourceScale?: number; }
+export interface AlignmentOptions { singleChannel?: boolean; sourceScale?: number; referenceRect?: AlignmentRect; }
 export function rotation(
   cv: any,
   inputPage: any,
@@ -250,7 +266,7 @@ export function rotation(
     const singleChannel = options.singleChannel === true && isOpaqueMonochrome(cv, page);
     if (singleChannel) warpMonochrome(cv, page, rotated, matrix);
     else cv.warpAffine(page, rotated, matrix, new cv.Size(page.cols, page.rows));
-    rotatedBig = largest_cnt(cv, rotated, sourceScale);
+    rotatedBig = largest_cnt(cv, rotated, sourceScale, options.referenceRect);
     const bounding = cv.boundingRect(rotatedBig);
     return {
       image: rotated,
@@ -1503,7 +1519,7 @@ export async function processStudentScan(
   let rotated: any;
   let rect: [number, number, number, number];
   try {
-    ({ rotated, rect } = rotation(cv, pageMat, alignment));
+    ({ rotated, rect } = rotation(cv, pageMat, { ...alignment, referenceRect: params.rect }));
   } finally {
     pageMat.delete();
   }
