@@ -1,4 +1,4 @@
-/** PDF-only compression. Keep marking pixels and lossless PNG downloads untouched. */
+/** PDF/archive compression. Keep marking pixels and lossless PNG downloads untouched. */
 export async function pdfPageJpeg(source: Blob): Promise<Blob> {
   const bitmap = await createImageBitmap(source);
   let canvas: OffscreenCanvas | undefined;

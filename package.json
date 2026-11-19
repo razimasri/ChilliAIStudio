@@ -28,6 +28,7 @@
     "test:calibration-preview": "node tests/calibrationPreview.browser.mjs",
     "test:calibration-session": "node tests/calibrationSession.mjs",
     "test:cleanup": "node tests/cleanupOptimizations.browser.mjs",
+    "test:camera-lighting": "node tests/cameraLighting.browser.mjs",
     "test:camera": "node tests/cameraScanning.browser.mjs",
     "test:camera-interface": "node tests/cameraInterface.browser.mjs",
     "test:batch-camera": "node tests/batchCamera.browser.mjs",

@@ -4,8 +4,9 @@ import { appendPdfReport } from './pdfReport';
 import {APP_VERSION,RELEASE_NAME} from './release';
 import type { PdfReport } from './exportPdf';
 
-self.onmessage = async ({ data: report }: MessageEvent<PdfReport>) => {
+self.onmessage = async ({ data: report }: MessageEvent<PdfReport & { includeSheets?: boolean }>) => {
   try {
+    const sheets: Blob[] = [];
     const pdf = await PDFDocument.create();
     pdf.setTitle('ChilliMark Annotated Work and Class Report');
     pdf.setCreator(`ChilliMark ${RELEASE_NAME} ${APP_VERSION}`);
@@ -15,6 +16,7 @@ self.onmessage = async ({ data: report }: MessageEvent<PdfReport>) => {
       const response = await fetch(student.annotatedDataUrl);
       if (!response.ok) throw new Error(`Could not read marked sheet for ${student.name}`);
       const jpeg = await pdfPageJpeg(await response.blob());
+      if (report.includeSheets) sheets.push(jpeg);
       const image = await pdf.embedJpg(await jpeg.arrayBuffer());
       const [width, height] = image.width > image.height ? [841.89, 595.28] : [595.28, 841.89];
       const page = pdf.addPage([width, height]);
@@ -27,6 +29,6 @@ self.onmessage = async ({ data: report }: MessageEvent<PdfReport>) => {
     await appendPdfReport(pdf, report, logo);
     self.postMessage({percent:95});
     const bytes = await pdf.save();
-    self.postMessage({ blob: new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }) });
+    self.postMessage({ sheets, blob: new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }) });
   } catch(error) { self.postMessage({error: error instanceof Error ? error.message : 'Could not create PDF.'}); }
 };
